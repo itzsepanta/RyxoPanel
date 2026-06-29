@@ -194,13 +194,10 @@ const Router = {
     // API: Setup initial password
     if (url.pathname === "/api/setup-password" && request.method === "POST") {
       if (hasPassword) {
-        return new Response(
-          JSON.stringify({ error: "Password already set" }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json; charset=utf-8" },
-          },
-        );
+        return new Response(JSON.stringify({ error: "Password already set" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        });
       }
       const { password } = await request.json();
       if (!password || password.length < 4) {
@@ -279,7 +276,7 @@ const Router = {
       }
       try {
         const githubRes = await fetch(
-          "https://raw.githubusercontent.com/IR-NETLIFY/ryxo/refs/heads/main/ryxo.js?t=" +
+          "https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=" +
             Date.now(),
         );
         if (!githubRes.ok)
@@ -321,7 +318,7 @@ const Router = {
         }
 
         const metadata = {
-          main_module: "ryxo.js",
+          main_module: "main.js",
           compatibility_date: "2024-02-08",
           bindings: newBindings,
         };
@@ -331,9 +328,9 @@ const Router = {
           new Blob([JSON.stringify(metadata)], { type: "application/json" }),
         );
         formData.append(
-          "ryxo.js",
+          "main.js",
           new Blob([newCode], { type: "application/javascript+module" }),
-          "ryxo.js",
+          "main.js",
         );
         const deployRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${scriptName}`,
@@ -385,7 +382,9 @@ const Router = {
       }
       if (new_password.length < 4) {
         return new Response(
-          JSON.stringify({ error: "New password must be at least 4 characters" }),
+          JSON.stringify({
+            error: "New password must be at least 4 characters",
+          }),
           {
             status: 400,
             headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -2047,12 +2046,321 @@ function trackRequest(env, ctx) {
 }
 
 // ============================================================
-// 9. HTML TEMPLATES (Simplified for brevity - full version in original code)
+// 9. HTML TEMPLATES
 // ============================================================
 const HTML_TEMPLATES = {
-  nginx: `<!DOCTYPE html><html><head><title>Ryxo Panel</title></head><body>Ryxo Panel</body></html>`,
-  setup: `<!DOCTYPE html><html><head><title>Setup</title></head><body>Setup</body></html>`,
-  login: `<!DOCTYPE html><html><head><title>Login</title></head><body>Login</body></html>`,
-  panel: `<!DOCTYPE html><html><head><title>Panel</title></head><body>Panel</body></html>`,
-  status: `<!DOCTYPE html><html><head><title>Status</title></head><body>Status</body></html>`,
+  nginx: `<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryxo Panel - Access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-8 text-center flex flex-col items-center gap-4">
+        <div class="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full mb-2">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </div>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Ryxo Panel - Admin Access</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
+            To access the panel, add 
+            <span class="inline-block px-2 py-1 bg-gray-100 dark:bg-amoled-input border border-gray-200 dark:border-zinc-800 rounded-md font-mono text-blue-500 font-bold mx-1 shadow-sm" dir="ltr">/panel</span> 
+            to the end of your browser address.
+        </p>
+        <button onclick="window.location.href='/panel'" class="mt-4 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition-colors duration-200 shadow-lg shadow-blue-600/20 font-bold">
+            Enter Panel
+        </button>
+    </div>
+</body>
+</html>`,
+
+  setup: `<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryxo Panel - Setup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-6">
+        <h2 class="text-xl font-bold mb-2 text-center text-blue-600 dark:text-blue-400">Set New Password</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">This is your first login. Please set your admin password.</p>
+        <form onsubmit="handleSetup(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Password</label>
+                <input type="password" id="password" class="w-full px-3 py-2 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center font-mono" required minlength="4">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Confirm Password</label>
+                <input type="password" id="confirm-password" class="w-full px-3 py-2 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center font-mono" required minlength="4">
+            </div>
+            <button type="submit" id="submit-btn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition font-bold">Set & Login</button>
+        </form>
+    </div>
+    <script>
+        async function handleSetup(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const btn = document.getElementById('submit-btn');
+            if (password !== confirmPassword) {
+                alert('⚠️ Passwords do not match!');
+                return;
+            }
+            btn.disabled = true;
+            btn.innerText = 'Saving...';
+            try {
+                const res = await fetch('/api/setup-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ Password set successfully. Logging in...');
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Operation failed'));
+                }
+            } catch (err) {
+                alert('Server communication error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Set & Login';
+            }
+        }
+    </script>
+</body>
+</html>`,
+
+  login: `<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryxo Panel - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-6">
+        <h2 class="text-xl font-bold mb-2 text-center text-blue-600 dark:text-blue-400">Admin Login</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">Enter your password to access the panel.</p>
+        <form onsubmit="handleLogin(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Password</label>
+                <input type="password" id="password" class="w-full px-3 py-2 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center font-mono" required>
+            </div>
+            <button type="submit" id="submit-btn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition font-bold">Login</button>
+        </form>
+    </div>
+    <script>
+        async function handleLogin(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerText = 'Checking...';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location.reload();
+                } else {
+                    alert('❌ Incorrect password!');
+                }
+            } catch (err) {
+                alert('Server communication error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Login';
+            }
+        }
+    </script>
+</body>
+</html>`,
+
+  panel: `<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryxo Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        .dark ::-webkit-scrollbar-track { background: #080b0f; }
+        .dark ::-webkit-scrollbar-thumb { background: #1c2330; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #2d3748; }
+        * { scrollbar-width: thin; scrollbar-color: #d1d5db #f3f4f6; }
+        .dark * { scrollbar-color: #1c2330 #080b0f; }
+        .gradient-text {
+            background: linear-gradient(135deg, #818cf8, #a78bfa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen transition-colors duration-200">
+    <div class="max-w-6xl mx-auto px-4 py-8 text-center">
+        <h1 class="text-4xl font-black mb-4">
+            <span class="gradient-text">Ryxo</span>
+            <span class="text-white/90">Panel</span>
+        </h1>
+        <p class="text-lg text-gray-500 dark:text-zinc-400 mb-8">Advanced VLESS Configuration Management</p>
+        <div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-8 shadow-sm max-w-2xl mx-auto">
+            <p class="text-gray-600 dark:text-zinc-300">🎉 Panel is working!</p>
+            <p class="text-sm text-gray-500 dark:text-zinc-400 mt-2">Use the deployer to create users and manage configurations.</p>
+        </div>
+    </div>
+</body>
+</html>`,
+
+  status: `<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryxo - User Subscription Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+        .glass {
+            background: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center py-12 px-4">
+    <div class="w-full max-w-xl glass rounded-3xl shadow-2xl p-6 md:p-8 relative overflow-hidden">
+        <div class="text-center mb-8">
+            <h1 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mb-1">Ryxo Panel - Subscription Status</h1>
+            <p id="display-username" class="text-sm font-bold text-blue-500 tracking-wide font-mono"></p>
+        </div>
+        <div id="status-card" class="mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 transition duration-300">
+            <span id="status-text" class="text-sm">Loading status...</span>
+        </div>
+        <div class="space-y-5 mb-8 relative z-10">
+            <div class="bg-white/40 dark:bg-zinc-900/30 border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs font-semibold text-gray-500 dark:text-zinc-400 flex items-center gap-1.5">Data Usage</span>
+                    <span id="volume-pct" class="text-xs font-bold text-blue-500">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden mb-3">
+                    <div id="volume-progress" class="bg-blue-600 h-2.5 rounded-full transition-all duration-1000" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 dark:text-zinc-400 font-medium">
+                    <span>Used: <span id="used-vol" class="font-bold text-gray-800 dark:text-zinc-200">-</span></span>
+                    <span>Total: <span id="limit-vol" class="font-bold text-gray-800 dark:text-zinc-200">-</span></span>
+                </div>
+            </div>
+            <div class="bg-white/40 dark:bg-zinc-900/30 border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs font-semibold text-gray-500 dark:text-zinc-400 flex items-center gap-1.5">Time Remaining</span>
+                    <span id="expiry-pct" class="text-xs font-bold text-purple-500">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden mb-3 flex justify-end">
+                    <div id="expiry-progress" class="bg-purple-600 h-2.5 rounded-full transition-all duration-1000" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 dark:text-zinc-400 font-medium">
+                    <span>Remaining: <span id="days-remaining" class="font-bold text-gray-800 dark:text-zinc-200">-</span></span>
+                    <span>Total: <span id="total-days" class="font-bold text-gray-800 dark:text-zinc-200">-</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        /* {{USER_DATA_PLACEHOLDER}} */
+        document.addEventListener('DOMContentLoaded', () => {
+            const u = window.statusUser;
+            if (!u) return;
+            document.getElementById('display-username').innerText = u.username;
+            const statusCard = document.getElementById('status-card');
+            const statusText = document.getElementById('status-text');
+            if (u.is_active === 0) {
+                statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-red-500/10 border-red-500/30 text-red-500';
+                statusText.innerText = '❌ Subscription: Disabled';
+            } else {
+                statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-emerald-500/10 border-emerald-500/30 text-emerald-500';
+                statusText.innerText = '✅ Subscription: Active';
+            }
+        });
+    </script>
+</body>
+</html>`,
 };
