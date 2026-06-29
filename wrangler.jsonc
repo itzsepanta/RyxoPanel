@@ -1,0 +1,5 @@
+{
+  "name": "ryxo-deployer",
+  "compatibility_date": "2026-06-29",
+  "main": "deployer.js"
+}
