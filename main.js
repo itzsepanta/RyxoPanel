@@ -2759,7 +2759,7 @@ const HTML_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZEUS Panel</title>
+    <title>Ryxo Panel</title>
     <script>
         const originalWarn = console.warn;
         console.warn = (...args) => {
@@ -2801,7 +2801,7 @@ const HTML_TEMPLATES = {
         <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div class="flex flex-row flex-wrap justify-center items-center gap-3 w-full md:w-auto">
                 <h1 class="text-lg font-bold flex items-center gap-2" dir="ltr">
-                    ZEUS Panel 
+                    Ryxo Panel 
                     <span id="panel-version" class="text-xs px-2 py-0.5 font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">v1.4.3</span>
                 </h1>
                 <div class="flex items-center gap-3 bg-gray-100 dark:bg-zinc-800/60 px-3 py-1.5 rounded-full border border-gray-200 dark:border-zinc-800/80 shadow-sm flex-shrink-0 w-fit">
@@ -2810,12 +2810,7 @@ const HTML_TEMPLATES = {
                             <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
                         </svg>
                     </a>
-                    <a href="https://www.youtube.com/@MacanDev" target="_blank" rel="noopener noreferrer" class="text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-all transform hover:scale-125 duration-200 flex-shrink-0" title="YouTube">
-                        <svg class="w-[22px] h-[22px] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .5 6.186C0 8.07 0 12 0 12s0 3.93.5 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.378.505 9.378.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                        </svg>
-                    </a>
-                    <a href="https://t.me/EzAccess1" target="_blank" rel="noopener noreferrer" class="text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 transition-all transform hover:scale-125 duration-200 flex-shrink-0" title="Telegram">
+                    <a href="https://t.me/RyxoStudio" target="_blank" rel="noopener noreferrer" class="text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 transition-all transform hover:scale-125 duration-200 flex-shrink-0" title="Telegram">
                         <svg class="w-[22px] h-[22px] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/>
                         </svg>
@@ -3439,7 +3434,7 @@ const HTML_TEMPLATES = {
                         warningBtn.classList.remove('hidden');
                     }
                     const today = new Date().toISOString().split('T')[0];
-                    if (localStorage.getItem('zeus_usage_warned_date') !== today) {
+                    if (localStorage.getItem('ryxo_usage_warned_date') !== today) {
                         openUsageWarning();
                     }
                 } else {
@@ -3856,7 +3851,7 @@ const HTML_TEMPLATES = {
             modal.classList.add('opacity-0', 'pointer-events-none');
             card.classList.remove('opacity-100', 'scale-100');
             card.classList.add('opacity-0', 'scale-95');
-            localStorage.setItem('zeus_path_warned_' + CURRENT_VERSION, 'true');
+            localStorage.setItem('ryxo_path_warned_' + CURRENT_VERSION, 'true');
         }
 
         function closeUsageWarning() {
@@ -3867,7 +3862,7 @@ const HTML_TEMPLATES = {
             card.classList.remove('opacity-100', 'scale-100');
             card.classList.add('opacity-0', 'scale-95');
             const today = new Date().toISOString().split('T')[0];
-            localStorage.setItem('zeus_usage_warned_date', today);
+            localStorage.setItem('ryxo_usage_warned_date', today);
         }
 
         function openUsageWarning() {
@@ -4549,7 +4544,7 @@ const HTML_TEMPLATES = {
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            if (localStorage.getItem('zeus_path_warned_' + CURRENT_VERSION) !== 'true') {
+            if (localStorage.getItem('ryxo_path_warned_' + CURRENT_VERSION) !== 'true') {
                 const modal = document.getElementById('path-warning-modal');
                 const card = modal.querySelector('div');
                 modal.classList.remove('opacity-0', 'pointer-events-none');
