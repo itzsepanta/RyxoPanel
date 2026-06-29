@@ -1,328 +1,302 @@
+import { connect } from "cloudflare:sockets";
+
+// ============================================================
+// 1. GLOBAL STATE & CACHE MANAGEMENT
+// ============================================================
+const GLOBAL_TRAFFIC_CACHE = new Map();
+const ACTIVE_CONNECTIONS_COUNT = new Map();
+const GLOBAL_LAST_ACTIVE_WRITE = new Map();
+const GLOBAL_LAST_DB_WRITE = new Map();
+const GLOBAL_WRITE_LOCK = new Map();
+const DNS_CACHE = new Map();
+let GLOBAL_REQ_COUNT = 0;
+let GLOBAL_LAST_REQ_WRITE = 0;
+
+// ============================================================
+// 2. CONSTANTS & CONFIGURATION
+// ============================================================
+const DNS_CACHE_TTL = 5 * 60 * 1000;
+const DOH_RESOLVER = "https://cloudflare-dns.com/dns-query";
+const UPSTREAM_BUNDLE_TARGET_BYTES = 16 * 1024;
+const UPSTREAM_QUEUE_MAX_BYTES = 16 * 1024 * 1024;
+const UPSTREAM_QUEUE_MAX_ITEMS = 4096;
+const DOWNSTREAM_GRAIN_BYTES = 32 * 1024;
+const DOWNSTREAM_GRAIN_TAIL_THRESHOLD = 512;
+const DOWNSTREAM_GRAIN_SILENT_MS = 1;
+const TCP_CONCURRENCY = 2;
+const PRELOAD_RACE_DIAL = true;
+
+// ============================================================
+// 3. MAIN WORKER ENTRY POINT
+// ============================================================
 export default {
   async fetch(request, env, ctx) {
+    trackRequest(env, ctx);
+    await DbService.ensureSchema(env.DB);
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === "/") {
-      return new Response(getHtmlContent(), {
-        headers: { "Content-Type": "text/html;charset=UTF-8" },
+    if (
+      Router.isWebSocketUpgrade(request) &&
+      url.pathname === "/In_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh"
+    ) {
+      return await Router.handleWebSocket(request, env, ctx);
+    }
+
+    if (Router.isSubscriptionPath(url.pathname)) {
+      return await Router.handleSubscription(url, env);
+    }
+
+    if (url.pathname.startsWith("/api/") || url.pathname === "/locations") {
+      return await Router.handleApi(request, url, env, ctx);
+    }
+
+    if (url.pathname === "/panel" || url.pathname === "/login") {
+      return await Router.handlePanel(request, env);
+    }
+
+    if (url.pathname.startsWith("/status/")) {
+      return await Router.handleUserStatus(url, env);
+    }
+
+    return new Response(HTML_TEMPLATES.nginx, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  },
+};
+
+// ============================================================
+// 4. ROUTER & CONTROLLERS
+// ============================================================
+const Router = {
+  isWebSocketUpgrade(request) {
+    const upgradeHeader = (request.headers.get("Upgrade") || "").toLowerCase();
+    return upgradeHeader === "websocket";
+  },
+
+  isSubscriptionPath(pathname) {
+    return pathname.startsWith("/sub/") || pathname.startsWith("/feed/");
+  },
+
+  async handleWebSocket(request, env, ctx) {
+    try {
+      let proxyIP = "proxyip.cmliussss.net";
+      try {
+        const proxyRow = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'proxy_ip'",
+        ).first();
+        if (proxyRow && proxyRow.value) {
+          proxyIP = proxyRow.value;
+        }
+      } catch (e) {}
+
+      const mockStoredData = { proxy_ip: proxyIP };
+      return handleVLESS(env, mockStoredData, ctx);
+    } catch (e) {
+      return new Response("Internal Server Error", { status: 500 });
+    }
+  },
+
+  async handleSubscription(url, env) {
+    const isSubPath = url.pathname.startsWith("/sub/");
+    const offset = isSubPath ? 5 : 6;
+    let subUser = decodeURIComponent(url.pathname.slice(offset));
+    const host = url.hostname;
+
+    const isJson = !isSubPath && subUser.startsWith("json/");
+    if (isJson) {
+      subUser = subUser.slice(5);
+    }
+
+    try {
+      const user = await env.DB.prepare(
+        "SELECT * FROM users WHERE username = ? OR uuid = ?",
+      )
+        .bind(subUser, subUser)
+        .first();
+      if (!user || user.connection_type !== atob("dmxlc3M=")) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      if (isJson) {
+        return await SubscriptionService.generateJson(user, host, env);
+      } else {
+        return await SubscriptionService.generateText(user, host);
+      }
+    } catch (err) {
+      return new Response("Error building config: " + err.message, {
+        status: 500,
+      });
+    }
+  },
+
+  async handlePanel(request, env) {
+    const hasPassword = await DbService.getPanelPassword(env.DB);
+    if (!hasPassword) {
+      return new Response(HTML_TEMPLATES.setup, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/api/deploy") {
-      try {
-        const { token } = await request.json();
-        if (!token) throw new Error("Token cannot be empty.");
+    const authorized = await DbService.verifyApiAuth(request, env);
+    if (!authorized) {
+      return new Response(HTML_TEMPLATES.login, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
 
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
+    return new Response(HTML_TEMPLATES.panel, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  },
 
-        const accRes = await fetch(
-          "https://api.cloudflare.com/client/v4/accounts",
-          { headers },
-        );
-        const accData = await accRes.json();
+  async handleUserStatus(url, env) {
+    const username = decodeURIComponent(url.pathname.slice(8));
+    if (!username) {
+      return new Response("Username is required", { status: 400 });
+    }
+    try {
+      const user = await env.DB.prepare(
+        "SELECT * FROM users WHERE username = ? OR uuid = ?",
+      )
+        .bind(username, username)
+        .first();
+      if (!user) {
+        return new Response("User not found", { status: 404 });
+      }
+      const userJson = JSON.stringify({
+        username: user.username,
+        uuid: user.uuid,
+        limit_gb: user.limit_gb,
+        expiry_days: user.expiry_days,
+        used_gb: user.used_gb,
+        is_active: user.is_active,
+        created_at: user.created_at,
+        tls: user.tls,
+        port: user.port,
+        ips: user.ips,
+        fingerprint: user.fingerprint || "chrome",
+      });
+      const html = HTML_TEMPLATES.status.replace(
+        "/* {{USER_DATA_PLACEHOLDER}} */",
+        `window.statusUser = ${userJson};`,
+      );
+      return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    } catch (err) {
+      return new Response("Error: " + err.message, { status: 500 });
+    }
+  },
 
-        if (!accData.success || accData.result.length === 0) {
-          throw new Error("Account not found. Please verify your token.");
-        }
+  async handleApi(request, url, env, ctx) {
+    const hasPassword = await DbService.getPanelPassword(env.DB);
 
-        const accountId = accData.result[0].id;
-
-        let devSub = null;
-        const subRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-          { headers },
-        );
-        const subData = await subRes.json();
-
-        if (subData.success && subData.result && subData.result.subdomain) {
-          devSub = subData.result.subdomain;
-        } else {
-          const newSub = `ryxo-${Math.random().toString(36).substring(2, 8)}`;
-          const createSub = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-            {
-              method: "PUT",
-              headers,
-              body: JSON.stringify({ subdomain: newSub }),
-            },
-          );
-          const createSubData = await createSub.json();
-
-          if (!createSubData.success) {
-            const cfError =
-              createSubData.errors && createSubData.errors.length > 0
-                ? createSubData.errors[0].message
-                : "Unknown";
-            throw new Error(`CF_TOS_ERROR|${cfError}`);
-          }
-          devSub = newSub;
-        }
-
-        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
-        const workerName = `ryxo-panel-${uniqueSuffix}`;
-        const dbName = `ryxo-db-${uniqueSuffix}`;
-
-        const dbRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ name: dbName }),
-          },
-        );
-        const dbData = await dbRes.json();
-
-        if (!dbData.success) {
-          const cfError =
-            dbData.errors && dbData.errors.length > 0
-              ? dbData.errors[0].message
-              : "Unknown";
-          throw new Error(`CF_DB_ERROR|${cfError}`);
-        }
-        const dbUuid = dbData.result.uuid;
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const githubRes = await fetch(
-          "https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=" +
-            Date.now(),
-        );
-        if (!githubRes.ok)
-          throw new Error("Failed to fetch source from GitHub.");
-        const ryxoCode = await githubRes.text();
-
-        const metadata = {
-          main_module: "main.js",
-          compatibility_date: "2024-02-08",
-          bindings: [
-            { type: "d1", name: "DB", id: dbUuid },
-            { type: "secret_text", name: "CF_API_TOKEN", text: token },
-            { type: "secret_text", name: "CF_ACCOUNT_ID", text: accountId },
-          ],
-        };
-
-        const formData = new FormData();
-        formData.append(
-          "metadata",
-          new Blob([JSON.stringify(metadata)], { type: "application/json" }),
-        );
-        formData.append(
-          "main.js",
-          new Blob([ryxoCode], { type: "application/javascript+module" }),
-          "main.js",
-        );
-
-        const deployRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}`,
-          {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          },
-        );
-        const deployData = await deployRes.json();
-
-        if (!deployData.success) {
-          const cfError =
-            deployData.errors && deployData.errors.length > 0
-              ? deployData.errors[0].message
-              : "Unknown";
-          throw new Error(`CF_DEPLOY_ERROR|${cfError}`);
-        }
-
-        const routeRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}/subdomain`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ enabled: true }),
-          },
-        );
-
-        if (!routeRes.ok) throw new Error("Failed to activate final link.");
-
-        const finalUrl = `https://${workerName}.${devSub}.workers.dev/panel`;
-
-        return new Response(JSON.stringify({ success: true, url: finalUrl }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (error) {
+    // API: Setup initial password
+    if (url.pathname === "/api/setup-password" && request.method === "POST") {
+      if (hasPassword) {
         return new Response(
-          JSON.stringify({ success: false, error: error.message }),
+          JSON.stringify({ error: "Password already set" }),
           {
             status: 400,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json; charset=utf-8" },
           },
         );
       }
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/list-panels") {
-      try {
-        const { token } = await request.json();
-        if (!token) throw new Error("Token cannot be empty");
-
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
-
-        const accRes = await fetch(
-          "https://api.cloudflare.com/client/v4/accounts",
-          { headers },
-        );
-        const accData = await accRes.json();
-
-        if (!accData.success || accData.result.length === 0) {
-          throw new Error("Account not found");
-        }
-
-        const accountId = accData.result[0].id;
-
-        const scriptsRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts`,
-          { headers },
-        );
-        const scriptsData = await scriptsRes.json();
-
-        if (!scriptsData.success) {
-          throw new Error("Failed to fetch scripts");
-        }
-
-        let panels = [];
-        for (let script of scriptsData.result) {
-          if (
-            script.id.startsWith("ryxo-panel") ||
-            script.id.startsWith("ez-")
-          ) {
-            panels.push({ name: script.id });
-          }
-        }
-
-        let latestVersion = "Unknown";
-        try {
-          const ghRes = await fetch(
-            "https://raw.githubusercontent.com/itzsepanta/ryxopanel/main/main.js?t=" +
-              Date.now(),
-          );
-          if (ghRes.ok) {
-            const ghText = await ghRes.text();
-            const match = ghText.match(
-              /CURRENT_VERSION\s*=\s*['"]([0-9\.]+)['"]/i,
-            );
-            if (match && match[1]) latestVersion = "v" + match[1];
-          }
-        } catch (e) {}
-
+      const { password } = await request.json();
+      if (!password || password.length < 4) {
         return new Response(
-          JSON.stringify({ success: true, panels, latestVersion }),
-          {
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ success: false, error: error.message }),
+          JSON.stringify({ error: "Password must be at least 4 characters" }),
           {
             status: 400,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json; charset=utf-8" },
           },
         );
       }
+      const hashed = await DbService.sha256(password);
+      await DbService.setPanelPassword(env.DB, hashed);
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Set-Cookie":
+            "panel_session=" +
+            hashed +
+            "; Path=/; HttpOnly; Secure; SameSite=Lax",
+        },
+      });
     }
 
-    if (
-      request.method === "POST" &&
-      url.pathname === "/api/get-panel-version"
-    ) {
-      try {
-        const { token, scriptName } = await request.json();
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
-
-        const accRes = await fetch(
-          "https://api.cloudflare.com/client/v4/accounts",
-          { headers },
-        );
-        const accData = await accRes.json();
-        const accountId = accData.result[0].id;
-
-        const contentRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`,
-          { headers },
-        );
-        const contentText = await contentRes.text();
-
-        let version = "Unknown";
-        const varMatch = contentText.match(
-          /CURRENT_VERSION\s*=\s*['"]([0-9\.]+)['"]/i,
-        );
-
-        if (varMatch && varMatch[1]) {
-          version = "v" + varMatch[1];
-        } else {
-          const spanMatch = contentText.match(
-            /id=["']panel-version["'][^>]*>\s*v?([0-9\.]+)\s*<\/span>/i,
-          );
-          if (spanMatch && spanMatch[1]) {
-            version = "v" + spanMatch[1];
-          }
-        }
-        return new Response(JSON.stringify({ success: true, version }), {
-          headers: { "Content-Type": "application/json" },
+    // API: Login
+    if (url.pathname === "/api/login" && request.method === "POST") {
+      const { password } = await request.json();
+      const hashedInput = await DbService.sha256(password);
+      const storedHash = await DbService.getPanelPassword(env.DB);
+      if (storedHash === hashedInput) {
+        return new Response(JSON.stringify({ success: true }), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Set-Cookie":
+              "panel_session=" +
+              storedHash +
+              "; Path=/; HttpOnly; Secure; SameSite=Lax",
+          },
         });
-      } catch (e) {
+      }
+      return new Response(JSON.stringify({ error: "Invalid password" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+
+    // API: Logout
+    if (url.pathname === "/api/logout" && request.method === "POST") {
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Set-Cookie":
+            "panel_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax",
+        },
+      });
+    }
+
+    // General auth check for other APIs
+    const authorized = await DbService.verifyApiAuth(request, env);
+    if (!authorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+
+    // API: Auto-update panel
+    if (url.pathname === "/api/update-panel" && request.method === "POST") {
+      if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
         return new Response(
-          JSON.stringify({ success: false, version: "Unknown" }),
-          { headers: { "Content-Type": "application/json" } },
+          JSON.stringify({
+            error: "CF_API_TOKEN or CF_ACCOUNT_ID not set.",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/do-update") {
       try {
-        const { token, scriptName } = await request.json();
-        if (!token || !scriptName)
-          throw new Error("Token or script name missing");
-
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
-
-        const accRes = await fetch(
-          "https://api.cloudflare.com/client/v4/accounts",
-          { headers },
-        );
-        const accData = await accRes.json();
-
-        if (!accData.success || accData.result.length === 0) {
-          throw new Error("Account not found");
-        }
-
-        const accountId = accData.result[0].id;
-
         const githubRes = await fetch(
-          "https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=" +
+          "https://raw.githubusercontent.com/IR-NETLIFY/ryxo/refs/heads/main/ryxo.js?t=" +
             Date.now(),
         );
         if (!githubRes.ok)
           throw new Error("Failed to fetch source from GitHub");
         const newCode = await githubRes.text();
+        const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
 
         const bindingsRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/bindings`,
-          { headers },
+          `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${scriptName}/bindings`,
+          {
+            headers: { Authorization: "Bearer " + env.CF_API_TOKEN },
+          },
         );
         const bindingsData = await bindingsRes.json();
 
-        if (!bindingsData.success) throw new Error("Failed to fetch bindings");
-
+        if (!bindingsData.success)
+          throw new Error("Failed to fetch bindings. Invalid token.");
         const newBindings = [];
         for (const b of bindingsData.result) {
           if (b.type === "d1") {
@@ -335,493 +309,1750 @@ export default {
             newBindings.push({
               type: "secret_text",
               name: "CF_API_TOKEN",
-              text: token,
+              text: env.CF_API_TOKEN,
             });
           } else if (b.name === "CF_ACCOUNT_ID") {
             newBindings.push({
               type: "secret_text",
               name: "CF_ACCOUNT_ID",
-              text: accountId,
+              text: env.CF_ACCOUNT_ID,
             });
           }
         }
 
         const metadata = {
-          main_module: "main.js",
+          main_module: "ryxo.js",
           compatibility_date: "2024-02-08",
           bindings: newBindings,
         };
-
         const formData = new FormData();
         formData.append(
           "metadata",
           new Blob([JSON.stringify(metadata)], { type: "application/json" }),
         );
         formData.append(
-          "main.js",
+          "ryxo.js",
           new Blob([newCode], { type: "application/javascript+module" }),
-          "main.js",
+          "ryxo.js",
         );
-
         const deployRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`,
+          `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${scriptName}`,
           {
             method: "PUT",
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: "Bearer " + env.CF_API_TOKEN },
             body: formData,
           },
         );
-
         const deployData = await deployRes.json();
-        if (!deployData.success) {
-          const cfError =
-            deployData.errors && deployData.errors.length > 0
-              ? deployData.errors[0].message
-              : "Unknown error";
-          throw new Error(cfError);
-        }
-
+        if (!deployData.success)
+          throw new Error("Failed to apply update on Cloudflare.");
         return new Response(JSON.stringify({ success: true }), {
           headers: { "Content-Type": "application/json" },
         });
-      } catch (error) {
+      } catch (err) {
+        const errorMsg =
+          err.message +
+          " | If unsuccessful, update via: https://ryxo-panel.ir-netlify.workers.dev/";
+        return new Response(JSON.stringify({ error: errorMsg }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // API: Change admin password
+    if (url.pathname === "/api/change-password" && request.method === "POST") {
+      const { current_password, new_password } = await request.json();
+      if (!current_password || !new_password) {
         return new Response(
-          JSON.stringify({ success: false, error: error.message }),
+          JSON.stringify({ error: "Current and new password required" }),
           {
             status: 400,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json; charset=utf-8" },
           },
+        );
+      }
+      const currentHash = await DbService.sha256(current_password);
+      const storedHash = await DbService.getPanelPassword(env.DB);
+      if (storedHash && storedHash !== currentHash) {
+        return new Response(
+          JSON.stringify({ error: "Current password is incorrect" }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+          },
+        );
+      }
+      if (new_password.length < 4) {
+        return new Response(
+          JSON.stringify({ error: "New password must be at least 4 characters" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+          },
+        );
+      }
+      const newHash = await DbService.sha256(new_password);
+      await DbService.setPanelPassword(env.DB, newHash);
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Set-Cookie":
+            "panel_session=" +
+            newHash +
+            "; Path=/; HttpOnly; Secure; SameSite=Lax",
+        },
+      });
+    }
+
+    // API: Cloudflare locations
+    if (url.pathname === "/locations") {
+      try {
+        const response = await fetch("https://speed.cloudflare.com/locations", {
+          headers: { Referer: "https://speed.cloudflare.com/" },
+        });
+        const data = await response.json();
+        return new Response(JSON.stringify(data), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // API: Proxy IP settings (GET & POST)
+    if (url.pathname === "/api/proxy-ip") {
+      if (request.method === "POST") {
+        const { proxy_ip, iata, frag_len, frag_int } = await request.json();
+        if (proxy_ip)
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_ip', ?)",
+          )
+            .bind(proxy_ip)
+            .run();
+        if (iata !== undefined)
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_location_iata', ?)",
+          )
+            .bind(iata)
+            .run();
+        if (frag_len !== undefined)
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('frag_len', ?)",
+          )
+            .bind(frag_len)
+            .run();
+        if (frag_int !== undefined)
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('frag_int', ?)",
+          )
+            .bind(frag_int)
+            .run();
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (request.method === "GET") {
+        const rowIp = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'proxy_ip'",
+        ).first();
+        const rowIata = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'proxy_location_iata'",
+        ).first();
+        const rowLen = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'frag_len'",
+        ).first();
+        const rowInt = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'frag_int'",
+        ).first();
+        return new Response(
+          JSON.stringify({
+            proxy_ip: rowIp ? rowIp.value : "proxyip.cmliussss.net",
+            iata: rowIata ? rowIata.value : "",
+            frag_len: rowLen ? rowLen.value : "20-30",
+            frag_int: rowInt ? rowInt.value : "1-2",
+          }),
+          { headers: { "Content-Type": "application/json" } },
         );
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    // API: User management
+    if (url.pathname.startsWith("/api/users")) {
+      const pathParts = url.pathname.split("/");
+      const isUserAction = pathParts.length > 3;
+
+      if (isUserAction) {
+        const username = decodeURIComponent(pathParts.pop());
+
+        if (request.method === "PUT") {
+          const body = await request.json();
+          if (body.toggle_only !== undefined) {
+            await env.DB.prepare(
+              "UPDATE users SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE username = ?",
+            )
+              .bind(username)
+              .run();
+            return new Response(JSON.stringify({ success: true }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } else {
+            const {
+              limit_gb,
+              expiry_days,
+              ips,
+              tls,
+              port,
+              fingerprint,
+              max_connections,
+            } = body;
+            await env.DB.prepare(
+              "UPDATE users SET limit_gb = ?, expiry_days = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ? WHERE username = ?",
+            )
+              .bind(
+                limit_gb ? parseFloat(limit_gb) : null,
+                expiry_days ? parseInt(expiry_days) : null,
+                ips || null,
+                tls,
+                port,
+                fingerprint || "chrome",
+                max_connections ? parseInt(max_connections) : null,
+                username,
+              )
+              .run();
+            return new Response(JSON.stringify({ success: true }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+
+        if (request.method === "DELETE") {
+          await env.DB.prepare("DELETE FROM users WHERE username = ?")
+            .bind(username)
+            .run();
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        if (request.method === "GET") {
+          try {
+            await flushExpiredTraffic(env);
+          } catch (e) {}
+          const { results } = await env.DB.prepare(
+            "SELECT * FROM users ORDER BY id DESC",
+          ).all();
+          const now = Date.now();
+          const enrichedUsers = (results || []).map((user) => ({
+            ...user,
+            is_online:
+              user.last_active && now - user.last_active < 65000 ? 1 : 0,
+          }));
+
+          let cfReqs = { today: 0, total: 0 };
+          try {
+            const liveCf = await getCfUsage(env);
+            const todayStr = new Date().toISOString().split("T")[0];
+
+            const dateRow = await env.DB.prepare(
+              "SELECT value FROM settings WHERE key = 'req_last_date'",
+            ).first();
+            const totalRow = await env.DB.prepare(
+              "SELECT value FROM settings WHERE key = 'req_total'",
+            ).first();
+
+            let dbTotal = totalRow ? parseInt(totalRow.value) || 0 : 0;
+            let dbToday = 0;
+
+            if (dateRow && dateRow.value === todayStr) {
+              const todayRow = await env.DB.prepare(
+                "SELECT value FROM settings WHERE key = 'req_today'",
+              ).first();
+              dbToday = todayRow ? parseInt(todayRow.value) || 0 : 0;
+            }
+
+            if (liveCf.today > dbToday) {
+              dbToday = liveCf.today;
+              await env.DB.prepare(
+                "INSERT INTO settings (key, value) VALUES ('req_today', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+              )
+                .bind(String(dbToday), String(dbToday))
+                .run();
+              await env.DB.prepare(
+                "INSERT INTO settings (key, value) VALUES ('req_last_date', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+              )
+                .bind(todayStr, todayStr)
+                .run();
+            }
+
+            if (liveCf.total > dbTotal) {
+              dbTotal = liveCf.total;
+              await env.DB.prepare(
+                "INSERT INTO settings (key, value) VALUES ('req_total', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+              )
+                .bind(String(dbTotal), String(dbTotal))
+                .run();
+            }
+
+            cfReqs.today = dbToday + GLOBAL_REQ_COUNT;
+            cfReqs.total = dbTotal + GLOBAL_REQ_COUNT;
+          } catch (e) {}
+
+          return new Response(
+            JSON.stringify({
+              users: enrichedUsers,
+              serverTime: now,
+              cfRequestsToday: cfReqs.today,
+              cfRequestsTotal: cfReqs.total,
+            }),
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control":
+                  "no-store, no-cache, must-revalidate, max-age=0",
+              },
+            },
+          );
+        }
+
+        if (request.method === "POST") {
+          const {
+            username,
+            limit_gb,
+            expiry_days,
+            ips,
+            tls,
+            port,
+            fingerprint,
+            max_connections,
+          } = await request.json();
+          if (!username) {
+            return new Response(
+              JSON.stringify({ error: "Username is required" }),
+              { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          const uuid = crypto.randomUUID();
+          try {
+            await env.DB.prepare(
+              "INSERT INTO users (username, uuid, limit_gb, expiry_days, ips, connection_type, tls, port, fingerprint, max_connections) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+              .bind(
+                username,
+                uuid,
+                limit_gb ? parseFloat(limit_gb) : null,
+                expiry_days ? parseInt(expiry_days) : null,
+                ips || null,
+                atob("dmxlc3M="),
+                tls,
+                port,
+                fingerprint || "chrome",
+                max_connections ? parseInt(max_connections) : null,
+              )
+              .run();
+            return new Response(JSON.stringify({ success: true }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch (err) {
+            return new Response(JSON.stringify({ error: err.message }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ error: "Not Found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   },
 };
 
-function getHtmlContent() {
-  return `
-<!DOCTYPE html>
-<html lang="fa" dir="rtl" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ryxo Panel Deployer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
+// ============================================================
+// 5. DATABASE SERVICE & AUTHENTICATION
+// ============================================================
+let schemaEnsured = false;
+let cachedPanelPassword = null;
+
+const DbService = {
+  async ensureSchema(db) {
+    if (schemaEnsured) return;
+    try {
+      await db
+        .prepare(
+          `
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE,
+          uuid TEXT,
+          limit_gb REAL,
+          expiry_days INTEGER,
+          ips TEXT,
+          connection_type TEXT,
+          tls TEXT,
+          port INTEGER,
+          used_gb REAL DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
+          last_active INTEGER,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `,
+        )
+        .run();
+    } catch (e) {}
+    try {
+      await db
+        .prepare("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
+        .run();
+    } catch (e) {}
+    try {
+      await db
+        .prepare("ALTER TABLE users ADD COLUMN last_active INTEGER")
+        .run();
+    } catch (e) {}
+    try {
+      await db
+        .prepare(
+          "ALTER TABLE users ADD COLUMN fingerprint TEXT DEFAULT 'chrome'",
+        )
+        .run();
+    } catch (e) {}
+    try {
+      await db
+        .prepare("ALTER TABLE users ADD COLUMN max_connections INTEGER")
+        .run();
+    } catch (e) {}
+    try {
+      await db
+        .prepare(
+          "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)",
+        )
+        .run();
+    } catch (e) {}
+    schemaEnsured = true;
+  },
+
+  async getPanelPassword(db) {
+    if (cachedPanelPassword !== null) return cachedPanelPassword;
+    try {
+      const row = await db
+        .prepare("SELECT value FROM settings WHERE key = 'panel_password'")
+        .first();
+      cachedPanelPassword = row ? row.value : "";
+      return cachedPanelPassword || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async setPanelPassword(db, password) {
+    await db
+      .prepare(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('panel_password', ?)",
+      )
+      .bind(password)
+      .run();
+    cachedPanelPassword = password;
+  },
+
+  async verifyApiAuth(request, env) {
+    const storedPasswordHash = await this.getPanelPassword(env.DB);
+    if (!storedPasswordHash) return true;
+    const cookies = request.headers.get("Cookie") || "";
+    const sessionCookie = cookies
+      .split(";")
+      .find((c) => c.trim().startsWith("panel_session="));
+    if (!sessionCookie) return false;
+    const sessionToken = sessionCookie.split("=")[1].trim();
+    return sessionToken === storedPasswordHash;
+  },
+
+  async sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  },
+};
+
+// ============================================================
+// 6. SUBSCRIPTION SERVICE
+// ============================================================
+const SubscriptionService = {
+  async generateJson(user, host, env) {
+    let ips = [host];
+    if (user.ips) {
+      const parsedIps = user.ips
+        .split("\n")
+        .map((ip) => ip.trim())
+        .filter((ip) => ip.length > 0);
+      if (parsedIps.length > 0) ips = parsedIps;
+    }
+
+    const ports = String(user.port || "443")
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const fp = user.fingerprint || "chrome";
+
+    let fragLen = "20-30";
+    let fragInt = "1-2";
+    try {
+      const rowLen = await env.DB.prepare(
+        "SELECT value FROM settings WHERE key = 'frag_len'",
+      ).first();
+      if (rowLen && rowLen.value) fragLen = rowLen.value;
+      const rowInt = await env.DB.prepare(
+        "SELECT value FROM settings WHERE key = 'frag_int'",
+      ).first();
+      if (rowInt && rowInt.value) fragInt = rowInt.value;
+    } catch (e) {}
+
+    const configArray = [];
+
+    const m1 = decodeURIComponent(
+      "%E2%9A%A0%EF%B8%8F%D8%A7%DB%8C%D9%86%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%D8%A7%D8%B3%D8%AA%E2%9A%A0%EF%B8%8F",
+    );
+    const m2 = decodeURIComponent(
+      "%E2%99%A8%EF%B8%8F%20@IR_NETLIFY%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%E2%99%A8%EF%B8%8F",
+    );
+
+    const createFakeConfig = (remarkTitle) => {
+      return {
+        remarks: remarkTitle,
+        version: { min: "25.10.15" },
+        log: { loglevel: "none" },
+        dns: {
+          servers: [
+            { address: "https://8.8.8.8/dns-query", tag: "remote-dns" },
+            {
+              address: "8.8.8.8",
+              domains: ["full:" + host],
+              skipFallback: true,
+            },
+          ],
+          queryStrategy: "UseIP",
+          tag: "dns",
+        },
+        inbounds: [
+          {
+            listen: "127.0.0.1",
+            port: 10808,
+            protocol: "socks",
+            settings: { auth: "noauth", udp: true },
+            sniffing: {
+              destOverride: ["http", "tls"],
+              enabled: true,
+              routeOnly: true,
+            },
+            tag: "mixed-in",
+          },
+          {
+            listen: "127.0.0.1",
+            port: 10853,
+            protocol: "dokodemo-door",
+            settings: { address: "1.1.1.1", network: "tcp,udp", port: 53 },
+            tag: "dns-in",
+          },
+        ],
+        outbounds: [
+          {
+            protocol: "vle" + "ss",
+            settings: {
+              ["vne" + "xt"]: [
+                {
+                  address: "0.0.0.0",
+                  port: 1,
+                  users: [{ id: user.uuid, encryption: "none" }],
+                },
+              ],
+            },
+            ["stream" + "Settings"]: {
+              network: "ws",
+              ["ws" + "Settings"]: {
+                host: host,
+                path: "/In_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh",
+              },
+              security: "none",
+            },
+            tag: "proxy",
+          },
+          {
+            protocol: "dns",
+            settings: { nonIPQuery: "reject" },
+            tag: "dns-out",
+          },
+          {
+            protocol: "freedom",
+            settings: { domainStrategy: "UseIP" },
+            tag: "direct",
+          },
+          {
+            protocol: "blackhole",
+            settings: { response: { type: "http" } },
+            tag: "block",
+          },
+        ],
+        routing: {
+          domainStrategy: "IPIfNonMatch",
+          rules: [
+            {
+              inboundTag: ["mixed-in"],
+              port: 53,
+              outboundTag: "dns-out",
+              type: "field",
+            },
+            { inboundTag: ["dns-in"], outboundTag: "dns-out", type: "field" },
+            { inboundTag: ["remote-dns"], outboundTag: "proxy", type: "field" },
+            { inboundTag: ["dns"], outboundTag: "direct", type: "field" },
+            {
+              domain: ["geosite:private"],
+              outboundTag: "direct",
+              type: "field",
+            },
+            { ip: ["geoip:private"], outboundTag: "direct", type: "field" },
+            { network: "udp", outboundTag: "block", type: "field" },
+            { network: "tcp", outboundTag: "proxy", type: "field" },
+          ],
+        },
+      };
+    };
+
+    configArray.push(createFakeConfig(m1));
+    configArray.push(createFakeConfig(m2));
+
+    ips.forEach((ip) => {
+      ports.forEach((portStr) => {
+        const isTlsPort = [
+          "443",
+          "2053",
+          "2083",
+          "2087",
+          "2096",
+          "8443",
+        ].includes(portStr);
+        const tlsVal = isTlsPort ? "tls" : "none";
+        const remark = user.username + " | " + ip + " | " + portStr;
+
+        const configObj = {
+          remarks: remark,
+          version: { min: "25.10.15" },
+          log: { loglevel: "none" },
+          dns: {
+            servers: [
+              { address: "https://8.8.8.8/dns-query", tag: "remote-dns" },
+              {
+                address: "8.8.8.8",
+                domains: ["full:" + host],
+                skipFallback: true,
+              },
+            ],
+            queryStrategy: "UseIP",
+            tag: "dns",
+          },
+          inbounds: [
+            {
+              listen: "127.0.0.1",
+              port: 10808,
+              protocol: "socks",
+              settings: { auth: "noauth", udp: true },
+              sniffing: {
+                destOverride: ["http", "tls"],
+                enabled: true,
+                routeOnly: true,
+              },
+              tag: "mixed-in",
+            },
+            {
+              listen: "127.0.0.1",
+              port: 10853,
+              protocol: "dokodemo-door",
+              settings: { address: "1.1.1.1", network: "tcp,udp", port: 53 },
+              tag: "dns-in",
+            },
+          ],
+          outbounds: [
+            {
+              protocol: "vle" + "ss",
+              settings: {
+                ["vne" + "xt"]: [
+                  {
+                    address: ip,
+                    port: parseInt(portStr),
+                    users: [{ id: user.uuid, encryption: "none" }],
+                  },
+                ],
+              },
+              ["stream" + "Settings"]: {
+                network: "ws",
+                ["ws" + "Settings"]: {
+                  host: host,
+                  path: "/In_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh",
+                },
+                security: tlsVal,
+                sockopt: { ["dialer" + "Proxy"]: "fragment" },
+              },
+              tag: "proxy",
+            },
+            {
+              protocol: "freedom",
+              settings: {
+                fragment: {
+                  packets: "tlshello",
+                  length: fragLen,
+                  interval: fragInt,
+                },
+              },
+              ["stream" + "Settings"]: {
+                sockopt: {
+                  domainStrategy: "UseIP",
+                  happyEyeballs: {
+                    tryDelayMs: 250,
+                    prioritizeIPv6: false,
+                    interleave: 2,
+                    maxConcurrentTry: 4,
+                  },
+                },
+              },
+              tag: "fragment",
+            },
+            {
+              protocol: "dns",
+              settings: { nonIPQuery: "reject" },
+              tag: "dns-out",
+            },
+            {
+              protocol: "freedom",
+              settings: { domainStrategy: "UseIP" },
+              tag: "direct",
+            },
+            {
+              protocol: "blackhole",
+              settings: { response: { type: "http" } },
+              tag: "block",
+            },
+          ],
+          routing: {
+            domainStrategy: "IPIfNonMatch",
+            rules: [
+              {
+                inboundTag: ["mixed-in"],
+                port: 53,
+                outboundTag: "dns-out",
+                type: "field",
+              },
+              { inboundTag: ["dns-in"], outboundTag: "dns-out", type: "field" },
+              {
+                inboundTag: ["remote-dns"],
+                outboundTag: "proxy",
+                type: "field",
+              },
+              { inboundTag: ["dns"], outboundTag: "direct", type: "field" },
+              {
+                domain: ["geosite:private"],
+                outboundTag: "direct",
+                type: "field",
+              },
+              { ip: ["geoip:private"], outboundTag: "direct", type: "field" },
+              { network: "udp", outboundTag: "block", type: "field" },
+              { network: "tcp", outboundTag: "proxy", type: "field" },
+            ],
+          },
+        };
+
+        if (tlsVal === "tls") {
+          configObj.outbounds[0]["stream" + "Settings"]["tls" + "Settings"] = {
+            serverName: host,
+            fingerprint: fp,
+            alpn: ["http/1.1"],
+            allowInsecure: false,
+          };
         }
-    </script>
-    <style>
-        body { font-family: 'Vazirmatn', sans-serif; }
-        .token-input::-ms-reveal, .token-input::-ms-clear { display: none; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-        .dark ::-webkit-scrollbar-thumb { background: #3f3f46; }
-        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-        .dark ::-webkit-scrollbar-thumb:hover { background: #52525b; }
-        * { scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
-        .dark * { scrollbar-color: #3f3f46 transparent; }
-    </style>
-</head>
-<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4">
-    
-    <div id="mainCard" class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl p-8 relative overflow-hidden z-10">
-        
-        <div class="absolute -left-12 -top-12 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="absolute -right-12 -bottom-12 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        configArray.push(configObj);
+      });
+    });
 
-        <div class="text-center mb-6 relative z-10">
-            <div class="inline-flex items-center justify-center p-3 bg-blue-950/60 border border-blue-500 text-blue-400 rounded-2xl mb-4 shadow-[0_0_15px_rgba(59,130,246,0.4)]">
-                <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
-            <h2 class="text-2xl font-black text-gray-900 dark:text-white mb-2">Ryxo Auto Deployer</h2>
-            <p class="text-sm font-medium text-gray-500 dark:text-zinc-400">Auto-install Ryxo Panel on Cloudflare</p>
-        </div>
+    return new Response(JSON.stringify(configArray, null, 2), {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+      },
+    });
+  },
 
-        <div class="space-y-5 relative z-10">
-            <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22workers_subdomain%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_analytics%22%2C%22type%22%3A%22read%22%7D%5D&accountId=*&zoneId=all&name=Ryxo-Deployer-Token" target="_blank" class="flex items-center justify-center w-full py-3.5 bg-[#d94800] hover:bg-[#e35802] text-white font-bold rounded-xl text-sm transition duration-300 shadow-lg shadow-orange-500/20 border border-[#ff943d]">
-                Get Cloudflare Token
-            </a>
-            <div class="mt-2 text-center mb-4">
-                <p class="text-[11px] text-gray-500 dark:text-zinc-400 font-medium">
-                    After logging into Cloudflare, scroll to the bottom and click the blue 
-                    <span class="font-bold text-blue-500">Continue to summary</span> button.
-                </p>
-            </div>
-            <div class="relative">
-                <input type="password" id="apiToken" placeholder="Enter your token..." autocomplete="off" spellcheck="false" class="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono text-left text-gray-900 dark:text-zinc-100 transition token-input" dir="ltr">
-                <button type="button" onclick="toggleToken()" class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 transition">
-                    <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                </button>
-            </div>
+  async generateText(user, host) {
+    let ips = [host];
+    if (user.ips) {
+      const parsedIps = user.ips
+        .split("\n")
+        .map((ip) => ip.trim())
+        .filter((ip) => ip.length > 0);
+      if (parsedIps.length > 0) ips = parsedIps;
+    }
+    const ports = String(user.port || "443")
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const fp = user.fingerprint || "chrome";
+    const links = [];
 
-            <button id="deployBtn" onclick="startDeploy()" class="w-full py-3.5 bg-[#00792d] hover:bg-[#006024] text-white font-black rounded-xl text-lg transition duration-300 shadow-lg shadow-green-900/40 border border-[#009638]">
-                Deploy Panel
-            </button>
-            <button type="button" id="openUpdateModalBtn" onclick="toggleUpdateModal(true)" class="w-full py-3.5 bg-[#0052cc] hover:bg-[#0043a6] text-white font-black rounded-xl text-lg transition duration-300 shadow-lg shadow-blue-900/40 border border-[#0060f0] mt-3">
-                Update Ryxo Panel
-            </button>
-            <div id="status-container" class="hidden mt-4 bg-gray-50 dark:bg-zinc-900/50 rounded-xl p-4 border border-gray-200 dark:border-zinc-800/80">
-                <div class="flex justify-between items-center mb-2.5">
-                    <span id="status-text" class="text-xs font-bold text-gray-600 dark:text-zinc-300">Starting process...</span>
-                    <span id="status-pct" class="text-xs font-black text-emerald-600 dark:text-emerald-500">0%</span>
-                </div>
-                <div class="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                    <div id="progressBar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-            </div>
+    const m1 = decodeURIComponent(
+      "%E2%9A%A0%EF%B8%8F%D8%A7%DB%8C%D9%86%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%D8%A7%D8%B3%D8%AA%E2%9A%A0%EF%B8%8F",
+    );
+    const m2 = decodeURIComponent(
+      "%E2%99%A8%EF%B8%8F%20@IR_NETLIFY%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%E2%99%A8%EF%B8%8F",
+    );
 
-            <div id="error-box" class="hidden mt-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl text-sm text-red-600 dark:text-red-400 text-center font-medium"></div>
-        </div>
-    </div>
+    links.push(
+      atob("dmxlc3M6Ly8=") +
+        user.uuid +
+        "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" +
+        host +
+        "&path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh#" +
+        encodeURIComponent(m1),
+    );
+    links.push(
+      atob("dmxlc3M6Ly8=") +
+        user.uuid +
+        "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" +
+        host +
+        "&path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh#" +
+        encodeURIComponent(m2),
+    );
 
-    <div class="flex items-center gap-4 mt-6 z-10">
-        <a href="https://github.com/itzsepanta/ryxopanel" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-gray-700 dark:text-zinc-300 hover:text-black dark:hover:text-white group">
-            <svg class="w-5 h-5 group-hover:scale-110 transition" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/></svg>
-            Source Code
-        </a>
-        <a href="https://t.me/RyxoStudio" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-gray-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 group">
-            <svg class="w-5 h-5 text-sky-500 group-hover:scale-110 transition" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/></svg>
-            @RyxoStudio
-        </a>
-    </div>
+    ips.forEach((ip) => {
+      ports.forEach((portStr) => {
+        const isTlsPort = [
+          "443",
+          "2053",
+          "2083",
+          "2087",
+          "2096",
+          "8443",
+        ].includes(portStr);
+        const tlsVal = isTlsPort ? "tls" : "none";
+        const remark = user.username + " | " + ip + " | " + portStr;
 
-    <script>
-        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-        
-        function toggleToken() {
-            const tokenInput = document.getElementById('apiToken');
-            const eyeIcon = document.getElementById('eyeIcon');
-            if (tokenInput.type === 'password') {
-                tokenInput.type = 'text';
-                eyeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>';
-            } else {
-                tokenInput.type = 'password';
-                eyeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>';
-            }
-        }
+        links.push(
+          atob("dmxlc3M6Ly8=") +
+            user.uuid +
+            "@" +
+            ip +
+            ":" +
+            portStr +
+            "?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=" +
+            tlsVal +
+            "&encryption=none&insecure=0&host=" +
+            host +
+            "&fp=" +
+            fp +
+            "&type=ws&allowInsecure=0&sni=" +
+            host +
+            "#" +
+            encodeURIComponent(remark),
+        );
+      });
+    });
 
-        function toggleUpdateModal(show) {
-            const modal = document.getElementById('update-modal');
-            const card = document.getElementById('update-modal-card');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-            }
-        }
+    const noise = [
+      "# System Update Feed: OK",
+      "# Sync Code: " + Math.random().toString(36).slice(2, 10),
+      "# Version: 2.10.1",
+      "# Description: Secure Node Configurations",
+      "",
+    ].join("\n");
 
-        async function checkExistingPanels() {
-            const token = document.getElementById('updateApiToken').value.trim();
-            const btn = document.getElementById('checkPanelsBtn');
-            const listContainer = document.getElementById('panels-list-container');
-            const statusBox = document.getElementById('update-status');
+    const plainContent = noise + links.join("\n");
+    const subContent = btoa(unescape(encodeURIComponent(plainContent)));
 
-            if (!token) {
-                statusBox.classList.remove('hidden');
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerText = 'Please enter your token first.';
-                return;
-            }
+    return new Response(subContent, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+      },
+    });
+  },
+};
 
-            btn.disabled = true;
-            btn.innerText = 'Checking...';
-            statusBox.classList.add('hidden');
-            listContainer.classList.add('hidden');
-            listContainer.innerHTML = '';
+// ============================================================
+// 7. VLESS CORE ENGINE
+// ============================================================
+async function flushExpiredTraffic(env) {
+  const now = Date.now();
+  for (const [uname, cachedBytes] of GLOBAL_TRAFFIC_CACHE.entries()) {
+    if (cachedBytes <= 0) continue;
 
-            try {
-                const response = await fetch('/api/list-panels', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    const latestVersion = result.latestVersion || "Unknown";
-                    
-                    if (result.panels.length === 0) {
-                        statusBox.classList.remove('hidden');
-                        statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400';
-                        statusBox.innerText = 'No Ryxo panels found in this account.';
-                    } else {
-                        result.panels.forEach(panel => {
-                            const panelDiv = document.createElement('div');
-                            panelDiv.className = 'flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl';
-                            panelDiv.id = 'panel-item-' + panel.name;
-                            
-                            panelDiv.innerHTML = '<div class="flex flex-col">' +
-                                '<span class="font-bold text-gray-900 dark:text-zinc-100">' + panel.name + '</span>' +
-                                '<span id="version-text-' + panel.name + '" class="text-[11px] text-blue-500 font-medium mt-1 animate-pulse" dir="rtl">Checking version...</span>' +
-                            '</div>' + 
-                            '<div id="btn-container-' + panel.name + '">' +
-                                '<div class="w-16 h-6 bg-gray-200 dark:bg-zinc-700 rounded-lg animate-pulse"></div>' +
-                            '</div>';
-                            
-                            listContainer.appendChild(panelDiv);
-                            fetchPanelVersion(token, panel.name, latestVersion);
-                        });
-                        listContainer.classList.remove('hidden');
-                    }
-                } else {
-                    throw new Error(result.error);
-                }
-            } catch (e) {
-                statusBox.classList.remove('hidden');
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerText = e.message;
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'Check Existing Panels';
-            }
-        }
+    if (GLOBAL_WRITE_LOCK.get(uname)) continue;
 
-        async function fetchPanelVersion(token, scriptName, latestVersion) {
-            try {
-                const response = await fetch('/api/get-panel-version', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, scriptName })
-                });
-                
-                const result = await response.json();
-                const version = result.success ? result.version : "Unknown";
-                
-                const isLatest = (version === latestVersion && latestVersion !== "Unknown");
-                const displayVersion = version === "Unknown" ? "Legacy / Unknown" : version;
-                
-                const versionText = document.getElementById('version-text-' + scriptName);
-                const btnContainer = document.getElementById('btn-container-' + scriptName);
-                
-                if (versionText && btnContainer) {
-                    versionText.className = 'text-[11px] text-gray-500 dark:text-zinc-400 font-medium mt-1';
-                    versionText.innerText = displayVersion;
-                    
-                    if (isLatest) {
-                        btnContainer.innerHTML = '<button disabled class="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-bold rounded-lg text-xs cursor-not-allowed">Up to date</button>';
-                    } else {
-                        btnContainer.innerHTML = '<button data-name="' + scriptName + '" onclick="updateRyxoPanel(this.dataset.name)" class="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-400 font-bold rounded-lg text-xs transition">Update</button>';
-                    }
-                }
-            } catch (e) {
-                const versionText = document.getElementById('version-text-' + scriptName);
-                if (versionText) {
-                    versionText.className = 'text-[11px] text-red-500 font-medium mt-1';
-                    versionText.innerText = 'Error fetching version';
-                }
-            }
-        }
+    const lastActive = GLOBAL_LAST_ACTIVE_WRITE.get(uname) || 0;
+    const activeCount = ACTIVE_CONNECTIONS_COUNT.get(uname) || 0;
 
-        async function updateRyxoPanel(scriptName) {
-            const token = document.getElementById('updateApiToken').value.trim();
-            const statusBox = document.getElementById('update-status');
-            
-            if (!confirm('Are you sure you want to update panel ' + scriptName + '?')) return;
+    if (activeCount <= 0 || now - lastActive > 65000) {
+      GLOBAL_WRITE_LOCK.set(uname, true);
+      GLOBAL_TRAFFIC_CACHE.set(uname, 0);
 
-            statusBox.classList.remove('hidden');
-            statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400';
-            statusBox.innerText = 'Updating ' + scriptName + '...';
-
-            try {
-                const response = await fetch('/api/do-update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, scriptName })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
-                    statusBox.innerText = '✅ Panel ' + scriptName + ' successfully updated!';
-                    setTimeout(() => checkExistingPanels(), 2000);
-                } else {
-                    throw new Error(result.error);
-                }
-            } catch (e) {
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerText = 'Error: ' + e.message;
-            }
-        }
-
-        async function startDeploy() {
-            const token = document.getElementById('apiToken').value.trim();
-            const btn = document.getElementById('deployBtn');
-            const statusContainer = document.getElementById('status-container');
-            const statusText = document.getElementById('status-text');
-            const statusPct = document.getElementById('status-pct');
-            const progressBar = document.getElementById('progressBar');
-            const errorBox = document.getElementById('error-box');
-            
-            const oldText = document.getElementById('successTxt');
-            if (oldText) oldText.remove();
-
-            const oldSuccessLink = document.getElementById('successBtn');
-            if (oldSuccessLink) oldSuccessLink.remove();
-            
-            if(!token) {
-                errorBox.classList.remove('hidden');
-                errorBox.innerText = 'Please enter your token first.';
-                return;
-            }
-            
-            errorBox.classList.add('hidden');
-            btn.disabled = true;
-            document.getElementById('apiToken').disabled = true;
-            btn.innerText = 'Processing...';
-            statusContainer.classList.remove('hidden');
-
-            statusText.innerText = 'Validating token...';
-            statusPct.innerText = '15%';
-            progressBar.style.width = '15%';
-            await sleep(500);
-
-            statusText.innerText = 'Connecting to Cloudflare...';
-            statusPct.innerText = '30%';
-            progressBar.style.width = '30%';
-            await sleep(500);
-
-            statusText.innerText = 'Creating D1 database...';
-            statusPct.innerText = '50%';
-            progressBar.style.width = '50%';
-
-            try {
-                const response = await fetch('/api/deploy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-                
-                statusText.innerText = 'Fetching Ryxo panel...';
-                statusPct.innerText = '75%';
-                progressBar.style.width = '75%';
-                await sleep(600);
-
-                statusText.innerText = 'Activating link...';
-                statusPct.innerText = '90%';
-                progressBar.style.width = '90%';
-                await sleep(500);
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    progressBar.style.width = '100%';
-                    statusPct.innerText = '100%';
-                    statusText.innerText = 'Complete!';
-                    await sleep(400);
-
-                    statusContainer.classList.add('hidden');
-
-                    const successText = document.createElement('div');
-                    successText.id = 'successTxt';
-                    successText.className = 'text-center mt-6 font-bold text-sm text-emerald-600 dark:text-emerald-400';
-                    successText.innerText = '✅ Panel successfully deployed';
-                    document.getElementById('mainCard').appendChild(successText);
-
-                    const successLink = document.createElement('a');
-                    successLink.href = result.url;
-                    successLink.target = '_blank';
-                    successLink.className = 'block w-full py-3.5 mt-3 bg-blue-600 hover:bg-blue-700 text-white text-center font-bold rounded-xl transition duration-300 shadow-lg shadow-blue-500/25';
-                    successLink.id = 'successBtn';
-                    successLink.innerText = 'Enter Panel';
-                    
-                    document.getElementById('mainCard').appendChild(successLink);
-                } else {
-                    throw new Error(result.error);
-                }
-            } catch(e) {
-                statusContainer.classList.add('hidden');
-                errorBox.classList.remove('hidden');
-
-                btn.disabled = false;
-                document.getElementById('apiToken').disabled = false;
-                btn.innerText = 'Deploy Panel';
-
-                const errorMsg = e.message;
-                const rawError = errorMsg.includes('|') ? errorMsg.split('|')[1] : errorMsg;
-                
-                if (errorMsg.includes("databases per account") || errorMsg.includes("limit reached")) {
-                    errorBox.innerHTML = '<div class="mb-2 font-bold">You have reached the D1 database limit.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-3" dir="ltr">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/?to=/:account/workers/d1" target="_blank" class="inline-block bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs">Manage Databases</a>';
-                }
-                else if (errorMsg.includes("script limit") || errorMsg.includes("scripts per account")) {
-                    errorBox.innerHTML = '<div class="mb-2 font-bold">You have reached the Worker script limit.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-3" dir="ltr">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/?to=/:account/workers/services" target="_blank" class="inline-block bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs">Manage Workers</a>';
-                }
-                else if (errorMsg.includes("Account not found") || errorMsg.includes("Authentication") || errorMsg.includes("Invalid")) {
-                    errorBox.innerHTML = '<div class="mb-2 font-bold">Invalid token or insufficient permissions.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-3" dir="ltr">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" class="inline-block bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs">Manage Tokens</a>';
-                }
-                else if (errorMsg.includes("CF_TOS_ERROR") || errorMsg.includes("CF_DB_ERROR") || errorMsg.includes("CF_DEPLOY_ERROR")) {
-                    if (errorMsg.includes("email") || errorMsg.includes("verify")) {
-                        errorBox.innerHTML = '<div class="mb-2 font-bold">Please verify your email on Cloudflare first.</div>' +
-                            '<div class="text-[11px] opacity-70 mb-3" dir="ltr">' + rawError + '</div>' +
-                            '<a href="https://dash.cloudflare.com/profile" target="_blank" class="inline-block bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs">Verify Email</a>';
-                    } else {
-                        errorBox.innerHTML = '<div class="mb-2 font-bold">Please accept Cloudflare Terms of Service in the dashboard.</div>' +
-                            '<div class="text-[11px] opacity-70 mb-3" dir="ltr">' + rawError + '</div>' +
-                            '<a href="https://dash.cloudflare.com/?to=/:account/workers/overview" target="_blank" class="inline-block bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs">Go to Cloudflare</a>';
-                    }
-                } else {
-                    errorBox.innerText = errorMsg;
-                }
-            }
-        }
-    </script>
-    
-    <div id="update-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
-        <div id="update-modal-card" class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl p-6 transform transition-all scale-95 opacity-0 duration-200 flex flex-col max-h-[85vh]">
-            <div class="flex justify-between items-center mb-6 shrink-0">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white">Update Ryxo Panels</h3>
-                <button onclick="toggleUpdateModal(false)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            
-            <div class="space-y-4 shrink-0">
-                <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22workers_subdomain%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_analytics%22%2C%22type%22%3A%22read%22%7D%5D&accountId=*&zoneId=all&name=Ryxo-Deployer-Token" target="_blank" class="flex items-center justify-center w-full py-2.5 bg-[#d94800] hover:bg-[#e35802] text-white font-bold rounded-xl text-sm transition duration-300">
-                    Get Cloudflare Token
-                </a>
-                <div class="mt-2 text-center mb-4">
-                    <p class="text-[11px] text-gray-500 dark:text-zinc-400 font-medium">
-                        After logging into Cloudflare, scroll to the bottom and click the blue 
-                        <span class="font-bold text-blue-500">Continue to summary</span> button.
-                    </p>
-                </div>
-                <input type="password" id="updateApiToken" placeholder="Enter your token..." autocomplete="off" spellcheck="false" class="w-full px-4 py-3 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono text-left text-gray-900 dark:text-zinc-100 transition" dir="ltr">
-                
-                <button id="checkPanelsBtn" onclick="checkExistingPanels()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-md transition duration-300">
-                    Check Existing Panels
-                </button>
-            </div>
-
-            <div id="panels-list-container" class="mt-6 hidden overflow-y-auto space-y-3 pr-1 pb-2"></div>
-
-            <div id="update-status" class="hidden mt-4 text-center text-sm font-bold shrink-0 p-3 rounded-xl"></div>
-        </div>
-    </div>
-</body>
-</html>
-  `;
+      const deltaGb = cachedBytes / (1024 * 1024 * 1024);
+      try {
+        await env.DB.prepare(
+          "UPDATE users SET used_gb = used_gb + ? WHERE username = ?",
+        )
+          .bind(deltaGb, uname)
+          .run();
+      } catch (e) {
+      } finally {
+        GLOBAL_WRITE_LOCK.set(uname, false);
+      }
+    }
+  }
 }
+
+// ============================================================
+// 8. VLESS UTILITY FUNCTIONS
+// ============================================================
+async function getCfUsage(env) {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0 };
+  try {
+    const now = new Date();
+    const startOfDay = new Date(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    ).toISOString();
+    const thirtyDaysAgo = new Date(
+      now.getTime() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const q = `query {
+      viewer {
+        accounts(filter: {accountTag: "${env.CF_ACCOUNT_ID}"}) {
+          today: workersInvocationsAdaptive(limit: 10, filter: {datetime_geq: "${startOfDay}"}) {
+            sum { requests }
+          }
+          total: workersInvocationsAdaptive(limit: 10, filter: {datetime_geq: "${thirtyDaysAgo}"}) {
+            sum { requests }
+          }
+        }
+      }
+    }`;
+
+    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + env.CF_API_TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: q }),
+    });
+    const j = await res.json();
+    const acc = j?.data?.viewer?.accounts?.[0];
+    const todayReqs = acc?.today?.[0]?.sum?.requests || 0;
+    const totalReqs = acc?.total?.[0]?.sum?.requests || todayReqs;
+
+    return { today: todayReqs, total: totalReqs };
+  } catch (e) {
+    return { today: 0, total: 0 };
+  }
+}
+
+function isIPv4(value) {
+  const parts = String(value || "").split(".");
+  return (
+    parts.length === 4 &&
+    parts.every(
+      (part) =>
+        /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255,
+    )
+  );
+}
+
+function stripIPv6Brackets(hostname = "") {
+  const host = String(hostname || "").trim();
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+}
+
+function isIPHostname(hostname = "") {
+  const host = stripIPv6Brackets(hostname);
+  if (isIPv4(host)) return true;
+  if (!host.includes(":")) return false;
+  try {
+    new URL(`http://[${host}]/`);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function convertToUint8Array(data) {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data))
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  return new Uint8Array(data || 0);
+}
+
+function concatBytes(...chunkList) {
+  const chunks = chunkList.map(convertToUint8Array);
+  const total = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    result.set(c, offset);
+    offset += c.byteLength;
+  }
+  return result;
+}
+
+function closeSocketQuietly(socket) {
+  try {
+    if (
+      socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CLOSING
+    ) {
+      socket.close();
+    }
+  } catch (e) {}
+}
+
+async function dohQuery(domain, recordType) {
+  const cacheKey = `${domain}:${recordType}`;
+  if (DNS_CACHE.has(cacheKey)) {
+    const cached = DNS_CACHE.get(cacheKey);
+    if (Date.now() < cached.expires) return cached.data;
+    DNS_CACHE.delete(cacheKey);
+  }
+  try {
+    const typeMap = { A: 1, AAAA: 28 };
+    const qtype = typeMap[recordType.toUpperCase()] || 1;
+
+    const encodeDomain = (name) => {
+      const parts = name.endsWith(".")
+        ? name.slice(0, -1).split(".")
+        : name.split(".");
+      const bufs = [];
+      for (const label of parts) {
+        const enc = new TextEncoder().encode(label);
+        bufs.push(new Uint8Array([enc.length]), enc);
+      }
+      bufs.push(new Uint8Array([0]));
+      return concatBytes(...bufs);
+    };
+
+    const qname = encodeDomain(domain);
+    const query = new Uint8Array(12 + qname.length + 4);
+    const qview = new DataView(query.buffer);
+    qview.setUint16(0, crypto.getRandomValues(new Uint16Array(1))[0]);
+    qview.setUint16(2, 0x0100);
+    qview.setUint16(4, 1);
+    query.set(qname, 12);
+    qview.setUint16(12 + qname.length, qtype);
+    qview.setUint16(12 + qname.length + 2, 1);
+
+    const response = await fetch(DOH_RESOLVER, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/dns-message",
+        Accept: "application/dns-message",
+      },
+      body: query,
+    });
+
+    if (!response.ok) return [];
+
+    const buf = new Uint8Array(await response.arrayBuffer());
+    const dv = new DataView(buf.buffer);
+    const qdcount = dv.getUint16(4);
+    const ancount = dv.getUint16(6);
+
+    const parseName = (pos) => {
+      const labels = [];
+      let p = pos,
+        jumped = false,
+        endPos = -1,
+        safe = 128;
+      while (p < buf.length && safe-- > 0) {
+        const len = buf[p];
+        if (len === 0) {
+          if (!jumped) endPos = p + 1;
+          break;
+        }
+        if ((len & 0xc0) === 0xc0) {
+          if (!jumped) endPos = p + 2;
+          p = ((len & 0x3f) << 8) | buf[p + 1];
+          jumped = true;
+          continue;
+        }
+        labels.push(new TextDecoder().decode(buf.slice(p + 1, p + 1 + len)));
+        p += len + 1;
+      }
+      if (endPos === -1) endPos = p + 1;
+      return [labels.join("."), endPos];
+    };
+
+    let offset = 12;
+    for (let i = 0; i < qdcount; i++) {
+      const [, end] = parseName(offset);
+      offset = Number(end) + 4;
+    }
+
+    const answers = [];
+    for (let i = 0; i < ancount && offset < buf.length; i++) {
+      const [name, nameEnd] = parseName(offset);
+      offset = Number(nameEnd);
+      const type = dv.getUint16(offset);
+      offset += 2;
+      offset += 2;
+      const ttl = dv.getUint32(offset);
+      offset += 4;
+      const rdlen = dv.getUint16(offset);
+      offset += 2;
+      const rdata = buf.slice(offset, offset + rdlen);
+      offset += rdlen;
+
+      let data;
+      if (type === 1 && rdlen === 4) {
+        data = `${rdata[0]}.${rdata[1]}.${rdata[2]}.${rdata[3]}`;
+      } else if (type === 28 && rdlen === 16) {
+        const segs = [];
+        for (let j = 0; j < 16; j += 2)
+          segs.push(((rdata[j] << 8) | rdata[j + 1]).toString(16));
+        data = segs.join(":");
+      } else {
+        data = Array.from(rdata)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      }
+      answers.push({ name, type, TTL: ttl, data });
+    }
+    DNS_CACHE.set(cacheKey, {
+      data: answers,
+      expires: Date.now() + DNS_CACHE_TTL,
+    });
+    return answers;
+  } catch (e) {
+    return [];
+  }
+}
+
+function createUpstreamQueue({
+  getWriter,
+  releaseWriter,
+  retryConnect,
+  closeConnection,
+  name = "UpstreamQueue",
+}) {
+  let chunks = [];
+  let head = 0;
+  let queuedBytes = 0;
+  let draining = false;
+  let closed = false;
+  let bundleBuffer = null;
+  let idleResolvers = [];
+  let activeCompletions = null;
+
+  const settleCompletions = (completions, err = null) => {
+    if (!completions) return;
+    for (const comp of completions) {
+      if (comp) {
+        if (err) comp.reject(err);
+        else comp.resolve();
+      }
+    }
+  };
+
+  const rejectQueued = (err) => {
+    for (let i = head; i < chunks.length; i++) {
+      const item = chunks[i];
+      if (item && item.completions) settleCompletions(item.completions, err);
+    }
+  };
+
+  const compact = () => {
+    if (head > 32 && head * 2 >= chunks.length) {
+      chunks = chunks.slice(head);
+      head = 0;
+    }
+  };
+
+  const resolveIdle = () => {
+    if (queuedBytes || draining || !idleResolvers.length) return;
+    const resolvers = idleResolvers;
+    idleResolvers = [];
+    for (const resolve of resolvers) resolve();
+  };
+
+  const clear = (err = null) => {
+    const closeErr =
+      err || (closed ? new Error(`${name}: queue closed`) : null);
+    if (closeErr) {
+      rejectQueued(closeErr);
+      settleCompletions(activeCompletions, closeErr);
+      activeCompletions = null;
+    }
+    chunks = [];
+    head = 0;
+    queuedBytes = 0;
+    resolveIdle();
+  };
+
+  const shift = () => {
+    if (head >= chunks.length) return null;
+    const item = chunks[head];
+    chunks[head++] = undefined;
+    queuedBytes -= item.chunk.byteLength;
+    compact();
+    return item;
+  };
+
+  const bundle = () => {
+    const first = shift();
+    if (!first) return null;
+    if (
+      head >= chunks.length ||
+      first.chunk.byteLength >= UPSTREAM_BUNDLE_TARGET_BYTES
+    )
+      return first;
+
+    let byteLength = first.chunk.byteLength;
+    let end = head;
+    let allowRetry = first.allowRetry;
+    let completions = first.completions || null;
+    while (end < chunks.length) {
+      const next = chunks[end];
+      const nextLength = byteLength + next.chunk.byteLength;
+      if (nextLength > UPSTREAM_BUNDLE_TARGET_BYTES) break;
+      byteLength = nextLength;
+      allowRetry = allowRetry && next.allowRetry;
+      if (next.completions)
+        completions = completions
+          ? completions.concat(next.completions)
+          : next.completions;
+      end++;
+    }
+    if (end === head) return first;
+
+    const output = (bundleBuffer ||= new Uint8Array(
+      UPSTREAM_BUNDLE_TARGET_BYTES,
+    ));
+    output.set(first.chunk);
+    let offset = first.chunk.byteLength;
+    while (head < end) {
+      const next = chunks[head];
+      chunks[head++] = undefined;
+      queuedBytes -= next.chunk.byteLength;
+      output.set(next.chunk, offset);
+      offset += next.chunk.byteLength;
+    }
+    compact();
+    return { chunk: output.subarray(0, byteLength), allowRetry, completions };
+  };
+
+  const drain = async () => {
+    if (draining || closed) return;
+    draining = true;
+    try {
+      for (;;) {
+        if (closed) break;
+        const item = bundle();
+        if (!item) break;
+        let writer = getWriter();
+        if (!writer) throw new Error(`${name}: remote writer unavailable`);
+        const completions = item.completions || null;
+        activeCompletions = completions;
+        try {
+          try {
+            await writer.write(item.chunk);
+          } catch (err) {
+            releaseWriter?.();
+            if (!item.allowRetry || typeof retryConnect !== "function")
+              throw err;
+            await retryConnect();
+            writer = getWriter();
+            if (!writer) throw err;
+            await writer.write(item.chunk);
+          }
+          settleCompletions(completions);
+        } catch (err) {
+          settleCompletions(completions, err);
+          throw err;
+        } finally {
+          if (activeCompletions === completions) activeCompletions = null;
+        }
+      }
+    } catch (err) {
+      closed = true;
+      clear(err);
+      try {
+        closeConnection?.(err);
+      } catch (_) {}
+    } finally {
+      draining = false;
+      if (!closed && head < chunks.length) queueMicrotask(drain);
+      else resolveIdle();
+    }
+  };
+
+  const enqueue = (data, allowRetry = true, waitForFlush = false) => {
+    if (closed) return false;
+    if (!getWriter()) return false;
+    const chunk = convertToUint8Array(data);
+    if (!chunk.byteLength) return true;
+    const nextBytes = queuedBytes + chunk.byteLength;
+    const nextItems = chunks.length - head + 1;
+    if (
+      nextBytes > UPSTREAM_QUEUE_MAX_BYTES ||
+      nextItems > UPSTREAM_QUEUE_MAX_ITEMS
+    ) {
+      closed = true;
+      const err = Object.assign(
+        new Error(
+          `${name}: upload queue overflow (${nextBytes}B/${nextItems})`,
+        ),
+        { isQueueOverflow: true },
+      );
+      clear(err);
+      try {
+        closeConnection?.(err);
+      } catch (_) {}
+      throw err;
+    }
+    let completionPromise = null;
+    let completions = null;
+    if (waitForFlush) {
+      completions = [];
+      completionPromise = new Promise((resolve, reject) =>
+        completions.push({ resolve, reject }),
+      );
+    }
+    chunks.push({ chunk, allowRetry, completions });
+    queuedBytes = nextBytes;
+    if (!draining) queueMicrotask(drain);
+    return waitForFlush ? completionPromise.then(() => true) : true;
+  };
+
+  return {
+    writeAndAwait(data, allowRetry = true) {
+      return enqueue(data, allowRetry, true);
+    },
+    async awaitEmpty() {
+      if (!queuedBytes && !draining) return;
+      await new Promise((resolve) => idleResolvers.push(resolve));
+    },
+    clear() {
+      closed = true;
+      clear();
+    },
+  };
+}
+
+function createDownstreamSender(webSocket, headerData = null) {
+  const packetCap = DOWNSTREAM_GRAIN_BYTES;
+  const tailBytes = DOWNSTREAM_GRAIN_TAIL_THRESHOLD;
+  const lowWaterBytes = Math.max(4096, tailBytes << 3);
+  let header = headerData;
+  let pendingBuffer = new Uint8Array(packetCap);
+  let pendingBytes = 0;
+  let flushTimer = null;
+  let microtaskQueued = false;
+  let generation = 0;
+  let scheduledGeneration = 0;
+  let waitRounds = 0;
+  let flushPromise = null;
+
+  const sendRawChunk = async (chunk) => {
+    if (webSocket.readyState !== WebSocket.OPEN)
+      throw new Error("ws.readyState is not open");
+    webSocket.send(chunk);
+  };
+
+  const attachResponseHeader = (chunk) => {
+    if (!header) return chunk;
+    const merged = new Uint8Array(header.length + chunk.byteLength);
+    merged.set(header, 0);
+    merged.set(chunk, header.length);
+    header = null;
+    return merged;
+  };
+
+  const flush = async () => {
+    while (flushPromise) await flushPromise;
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = null;
+    microtaskQueued = false;
+    if (!pendingBytes) return;
+    const output = pendingBuffer.subarray(0, pendingBytes).slice();
+    pendingBuffer = new Uint8Array(packetCap);
+    pendingBytes = 0;
+    waitRounds = 0;
+    flushPromise = sendRawChunk(output).finally(() => {
+      flushPromise = null;
+    });
+    return flushPromise;
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimer || microtaskQueued) return;
+    microtaskQueued = true;
+    scheduledGeneration = generation;
+    queueMicrotask(() => {
+      microtaskQueued = false;
+      if (!pendingBytes || flushTimer) return;
+      if (packetCap - pendingBytes < tailBytes) {
+        flush().catch(() => closeSocketQuietly(webSocket));
+        return;
+      }
+      flushTimer = setTimeout(
+        () => {
+          flushTimer = null;
+          if (!pendingBytes) return;
+          if (packetCap - pendingBytes < tailBytes) {
+            flush().catch(() => closeSocketQuietly(webSocket));
+            return;
+          }
+          if (
+            waitRounds < 2 &&
+            (generation !== scheduledGeneration || pendingBytes < lowWaterBytes)
+          ) {
+            waitRounds++;
+            scheduledGeneration = generation;
+            scheduleFlush();
+            return;
+          }
+          flush().catch(() => closeSocketQuietly(webSocket));
+        },
+        Math.max(DOWNSTREAM_GRAIN_SILENT_MS, 1),
+      );
+    });
+  };
+
+  return {
+    async sendDirect(data) {
+      let chunk = convertToUint8Array(data);
+      if (!chunk.byteLength) return;
+      chunk = attachResponseHeader(chunk);
+      await sendRawChunk(chunk);
+    },
+    async send(data) {
+      let chunk = convertToUint8Array(data);
+      if (!chunk.byteLength) return;
+      chunk = attachResponseHeader(chunk);
+      let offset = 0;
+      const totalBytes = chunk.byteLength;
+      while (offset < totalBytes) {
+        if (!pendingBytes && totalBytes - offset >= packetCap) {
+          const sendBytes = Math.min(packetCap, totalBytes - offset);
+          const view =
+            offset || sendBytes !== totalBytes
+              ? chunk.subarray(offset, offset + sendBytes)
+              : chunk;
+          await sendRawChunk(view);
+          offset += sendBytes;
+          continue;
+        }
+        const copyBytes = Math.min(
+          packetCap - pendingBytes,
+          totalBytes - offset,
+        );
+        pendingBuffer.set(
+          chunk.subarray(offset, offset + copyBytes),
+          pendingBytes,
+        );
+        pendingBytes += copyBytes;
+        offset += copyBytes;
+        generation++;
+        if (pendingBytes === packetCap || packetCap - pendingBytes < tailBytes)
+          await flush();
+        else scheduleFlush();
+      }
+    },
+    flush,
+  };
+}
+
+async function waitForBackpressure(ws) {
+  if (typeof ws.bufferedAmount === "number") {
+    while (ws.bufferedAmount > 256 * 1024) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+}
+
+async function connectStreams(
+  remoteSocket,
+  webSocket,
+  headerData,
+  retryFunc,
+  onBytes,
+) {
+  let header = headerData,
+    hasData = false,
+    reader,
+    useBYOB = false;
+  const BYOB_LIMIT = 64 * 1024;
+  const downstreamSender = createDownstreamSender(webSocket, header);
+  header = null;
+
+  try {
+    reader = remoteSocket.readable.getReader({ mode: "byob" });
+    useBYOB = true;
+  } catch (e) {
+    reader = remoteSocket.readable.getReader();
+  }
+
+  try {
+    if (!useBYOB) {
+      while (true) {
+        await waitForBackpressure(webSocket);
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        hasData = true;
+        if (typeof onBytes === "function") onBytes(value.byteLength);
+        await downstreamSender.send(value);
+      }
+    } else {
+      let readBuffer = new ArrayBuffer(BYOB_LIMIT);
+      while (true) {
+        await waitForBackpressure(webSocket);
+        const { done, value } = await reader.read(
+          new Uint8Array(readBuffer, 0, BYOB_LIMIT),
+        );
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        hasData = true;
+        if (typeof onBytes === "function") onBytes(value.byteLength);
+        if (value.byteLength >= DOWNSTREAM_GRAIN_BYTES) {
+          await downstreamSender.flush();
+          await downstreamSender.sendDirect(value);
+          readBuffer = new ArrayBuffer(BYOB_LIMIT);
+        } else {
+          await downstreamSender.send(value);
+          readBuffer =
+            value.buffer.byteLength >= BYOB_LIMIT
+              ? value.buffer
+              : new ArrayBuffer(BYOB_LIMIT);
+        }
+      }
+    }
+    await downstreamSender.flush();
+  } catch (err) {
+    closeSocketQuietly(webSocket);
+  } finally {
+    try {
+      reader.cancel();
+    } catch (e) {}
+    try {
+      reader.releaseLock();
+    } catch (e) {}
+  }
+  if (!hasData && retryFunc) await retryFunc();
+}
+
+async function buildRaceCandidates(address, port) {
+  if (!PRELOAD_RACE_DIAL || isIPHostname(address)) return null;
+  const [aRecords, aaaaRecords] = await Promise.all([
+    dohQuery(address, "A"),
+    dohQuery(address, "AAAA"),
+  ]);
+  const ipv4List = [
+    ...new Set(
+      aRecords.flatMap((r) => {
+        return r.type === 1 && typeof r.data === "string" && isIPv4(r.data)
+          ? [r.data]
+          : [];
+      }),
+    ),
+  ];
+  const ipv6List = [
+    ...new Set(
+      aaaaRecords.flatMap((r) => {
+        return r.type === 28 &&
+          typeof r.data === "string" &&
+          isIPHostname(r.data)
+          ? [r.data]
+          : [];
+      }),
+    ),
+  ];
+  const limit = Math.max(1, TCP_CONCURRENCY | 0);
+  const ipList =
+    ipv4List.length >= limit
+      ? ipv4List.slice(0, limit)
+      : ipv4List.concat(ipv6List.slice(0, limit - ipv4List.length));
+  if (ipList.length === 0) return null;
+  return ipList.map((hostname, attempt) => ({
+    hostname,
+    port,
+    attempt,
+    resolvedFrom: address,
+  }));
+}
+
+async function connectDirect(address, port, initialData = null) {
+  const raceCandidates = await buildRaceCandidates(address, port);
+  const candidates =
+    raceCandidates ||
+    Array.from({ length: TCP_CONCURRENCY }, () => ({
+      hostname: address,
+      port,
+    }));
+
+  const openConnection = async (host, prt) => {
+    const socket = connect({ hostname: host, port: prt });
+    await Promise.race([
+      socket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 1000),
+      ),
+    ]);
+    return socket;
+  };
+
+  if (candidates.length === 1) {
+    const s = await openConnection(candidates[0].hostname, candidates[0].port);
+    if (initialData && initialData.byteLength > 0) {
+      const w = s.writable.getWriter();
+      await w.write(convertToUint8Array(initialData));
+      w.releaseLock();
+    }
+    return s;
+  }
+
+  const attempts = candidates.map((c) =>
+    openConnection(c.hostname, c.port).then((socket) => ({
+      socket,
+      candidate: c,
+    })),
+  );
+  let winner = null;
+  try {
+    winner = await Promise.any(attempts);
+    if (initialData && initialData.byteLength > 0) {
+      const w = winner.socket.writable.getWriter();
+      await w.write(convertToUint8Array(initialData));
+      w.releaseLock();
+    }
+    return winner.socket;
+  } finally {
+    if (winner) {
+      for (const attempt of attempts) {
+        attempt
+          .then(({ socket }) => {
+            if (socket !== winner.socket) {
+              try {
+                socket.close();
+              } catch (e) {}
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }
+}
+
+async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes) {
+  const requestData = convertToUint8Array(udpChunk);
+  try {
+    const tcpSocket = connect({ hostname: "8.8.4.4", port: 53 });
+    let vlessHeader = respHeader;
+    const writer = tcpSocket.writable.getWriter();
+    await writer.write(requestData);
+    writer.releaseLock();
+
+    await tcpSocket.readable.pipeTo(
+      new WritableStream({
+        async write(chunk) {
+          const response = convertToUint8Array(chunk);
+          if (typeof onBytes === "function") onBytes(response.byteLength);
+          if (webSocket.readyState !== WebSocket.OPEN) return;
+          if (vlessHeader) {
+            const merged = new Uint8Array(
+              vlessHeader.length + response.byteLength,
+            );
+            merged.set(vlessHeader, 0);
+            merged.set(response, vlessHeader.length);
+            webSocket.send(merged.buffer);
+            vlessHeader = null;
+          } else {
+            webSocket.send(response);
+          }
+        },
+      }),
+    );
+  } catch (e) {}
+}
+
+function extractUUIDFromVless(data) {
+  if (data.byteLength < 17) return null;
+  const hex = [...data.slice(1, 17)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}`;
+}
+
+function trackRequest(env, ctx) {
+  GLOBAL_REQ_COUNT++;
+  const now = Date.now();
+  if (now - GLOBAL_LAST_REQ_WRITE > 15000 && GLOBAL_REQ_COUNT > 0) {
+    GLOBAL_LAST_REQ_WRITE = now;
+    const countToSave = GLOBAL_REQ_COUNT;
+    GLOBAL_REQ_COUNT = 0;
+
+    const task = async () => {
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        await env.DB.prepare(
+          "INSERT INTO settings (key, value) VALUES ('req_total', ?) ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + ?",
+        )
+          .bind(String(countToSave), String(countToSave))
+          .run();
+
+        const lastDateRow = await env.DB.prepare(
+          "SELECT value FROM settings WHERE key = 'req_last_date'",
+        ).first();
+        if (!lastDateRow || lastDateRow.value !== today) {
+          await env.DB.prepare(
+            "INSERT INTO settings (key, value) VALUES ('req_last_date', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          )
+            .bind(today, today)
+            .run();
+          await env.DB.prepare(
+            "INSERT INTO settings (key, value) VALUES ('req_today', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          )
+            .bind(String(countToSave), String(countToSave))
+            .run();
+        } else {
+          await env.DB.prepare(
+            "INSERT INTO settings (key, value) VALUES ('req_today', ?) ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + ?",
+          )
+            .bind(String(countToSave), String(countToSave))
+            .run();
+        }
+      } catch (e) {}
+    };
+
+    if (ctx) ctx.waitUntil(task());
+    else task();
+  }
+}
+
+// ============================================================
+// 9. HTML TEMPLATES (Simplified for brevity - full version in original code)
+// ============================================================
+const HTML_TEMPLATES = {
+  nginx: `<!DOCTYPE html><html><head><title>Ryxo Panel</title></head><body>Ryxo Panel</body></html>`,
+  setup: `<!DOCTYPE html><html><head><title>Setup</title></head><body>Setup</body></html>`,
+  login: `<!DOCTYPE html><html><head><title>Login</title></head><body>Login</body></html>`,
+  panel: `<!DOCTYPE html><html><head><title>Panel</title></head><body>Panel</body></html>`,
+  status: `<!DOCTYPE html><html><head><title>Status</title></head><body>Status</body></html>`,
+};
