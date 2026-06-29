@@ -144,7 +144,7 @@ export default {
 
         if (!routeRes.ok) throw new Error("Failed to activate final link.");
 
-        const finalUrl = `https://${workerName}.${devSub}.workers.dev/panel`;
+        const finalUrl = `https://${workerName}.${devSub}.itzsepanta.github.io/RyxoPanel/panel`;
 
         return new Response(JSON.stringify({ success: true, url: finalUrl }), {
           headers: { "Content-Type": "application/json" },
