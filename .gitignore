@@ -1,580 +1,60 @@
-# ============================================================
-# Ryxo Panel - Git Ignore File (Enterprise Edition)
-# ============================================================
-
-# ============================================================
-# Node.js / JavaScript
-# ============================================================
+# Node
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-pnpm-workspace.yaml
-.npm/
-.yarn/
-.yarnrc
-.yarnrc.yml
+.pnpm-debug.log*
 
-# ============================================================
-# Environment & Configuration
-# ============================================================
+# Environment
 .env
 .env.local
 .env.*.local
-*.env
-*.env.*
-!.env.example
-.env.production
-.env.staging
-.env.development
-.env.test
 
-# ============================================================
-# Cloudflare Workers
-# ============================================================
-*.wrangler
-.wrangler/
-wrangler.toml
-wrangler.*.toml
-.dev.vars
-*.dev.vars
-.workers/
+# Build
 dist/
 build/
+.wrangler/
+.vercel/
+.next/
 out/
-.edgeone/
-.edgeone/**
 
-# ============================================================
-# IDE / Editor
-# ============================================================
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.vscode-test/
-.vscode/settings.json
-.vscode/launch.json
-.vscode/extensions.json
-.vscode/*.code-snippets
-.history/
-*.code-workspace
-*.iml
-*.ipr
-*.iws
-.idea_modules/
-out/
-*.sublime-project
-*.sublime-workspace
-*.sublime-settings
-.sublime/
-.atom/
-*.atom-project
-.atom-build.json
-.brackets.json
-.vim/
-.vimrc
-.*.swp
-.*.swo
-.#*
-\#*#
-.*.emacs*
-.emacs*
-.eshell*
-
-# ============================================================
-# OS / System
-# ============================================================
 Thumbs.db
-Desktop.ini
-*.log
-*.tmp
-*.temp
-*.cache
-*.pid
-*.seed
-*.pid.lock
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-ehthumbs_vista.db
 
-# ============================================================
-# Backup & Temp Files
-# ============================================================
-*.bak
-*.backup
-*.old
-*.orig
-*.rej
-*.patch
-*.diff
-*.tmp_*
-**/*.tmp
-backup/
-temp/
-tmp/
-*.~*
-*~
-
-# ============================================================
-# Database Files
-# ============================================================
-*.db
-*.sqlite
-*.sqlite3
-*.db-journal
-*.db-wal
-*.db-shm
-*.d1
-*.d1.*
-migrations/*.sql
-!migrations/0000_initial.sql
-*.db.gz
-*.sqlite.gz
-*.sql.gz
-
-# ============================================================
-# Build / Distribution
-# ============================================================
-dist/
-build/
-out/
-output/
-*.min.js
-*.min.css
-*.bundle.js
-*.chunk.js
-*.chunk.css
-coverage/
-.nyc_output/
-*.map
-*.tsbuildinfo
-.eslintcache
-.parcel-cache/
-.cache/
-.next/
-.nuxt/
-.svelte-kit/
-.storybook/
-
-# ============================================================
-# Test Files
-# ============================================================
-test/
-tests/
-__tests__/
-*.test.js
-*.spec.js
-*.test.ts
-*.spec.ts
-coverage/
-.nyc_output/
-jest.config.js
-vitest.config.js
-*.test.js.map
-*.spec.js.map
-
-# ============================================================
-# Documentation
-# ============================================================
-docs/_build/
-docs/api/
-docs/_static/
-docs/_templates/
-*.html.tmp
-*.pdf.tmp
-*.doc.tmp
-*.md.tmp
-docs/*.log
-
-# ============================================================
-# Deployment
-# ============================================================
-*.deploy
-*.deploy.*
-deploy.log
-deploy-*.log
-*.cf.*
-cloudflare-*.json
-*.deployment.json
-*.deployment.log
-
-# ============================================================
-# SSL / Certificates
-# ============================================================
-*.pem
-*.crt
-*.key
-*.p12
-*.pfx
-*.cer
-*.der
-*.csr
-ssl/
-cert/
-certs/
-keys/
-*.pem.encrypted
-*.key.encrypted
-
-# ============================================================
-# Project Specific - Ryxo Panel
-# ============================================================
-users_backup.json
-settings_backup.json
-traffic_*.json
-*.cache.json
-*.metadata.json
-*.temp.json
-*.tmp.json
-temp_users/
-user_data_*.json
-session_*.tmp
-user_sessions.json
-user_traffic.json
-*.userdata.json
-*.traffic.json
-*.session.json
-users.json
-users_data.json
-traffic_data.json
-usage_data.json
-user_configs.json
-subscriptions.json
-
-# Photos (except for documentation)
-photos/
-!photos/README.md
-screenshots/
-!screenshots/README.md
-*.png.tmp
-*.jpg.tmp
-*.jpeg.tmp
-*.gif.tmp
-*.svg.tmp
-
-# ============================================================
-# Git
-# ============================================================
-*.git
-*.gitattributes
-*.gitignore
-*.gitmodules
-.git/
-.gitignore.tmp
-.gitattributes.tmp
-
-# ============================================================
-# Archive / Compressed
-# ============================================================
-*.zip
-*.tar.gz
-*.tgz
-*.rar
-*.7z
-*.gz
-*.bz2
-*.xz
-*.tar
-*.iso
-*.dmg
-*.pkg
-
-# ============================================================
-# Docker
-# ============================================================
-Dockerfile
-docker-compose.yml
-.dockerignore
-*.dockerfile
-docker/
-*.dockerignore
-.docker/
-
-# ============================================================
-# CI / CD
-# ============================================================
-.github/
-.gitlab/
-.ci/
-.circleci/
-.travis.yml
-azure-pipelines.yml
-.gitlab-ci.yml
-.github/workflows/
-!github/workflows/release.yml
-.bitbucket/
-.jenkins/
-.gitlab/
-
-# ============================================================
 # Logs
-# ============================================================
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-worker-*.log
-cf-*.log
-access.log
-error.log
-debug.log
-combined.log
-*.log.gz
 
-# ============================================================
-# Security
-# ============================================================
-*.secret
-*.key
-*.pem
-*.p12
-*.pfx
-*.cer
-*.crt
-*.csr
-*.keystore
-*.truststore
-*.jks
-security/
-!security/README.md
-secrets/
-!secrets/README.md
-password.txt
-tokens.txt
-api-keys.json
-*.token
-*.apikey
-*.secretkey
-
-# ============================================================
-# Performance & Profiling
-# ============================================================
-*.prof
-*.heapsnapshot
-*.cpuprofile
-*.heapprofile
-.performance/
-*.v8.log
-*.trace.log
-
-# ============================================================
-# Miscellaneous
-# ============================================================
-*.local
-*.user
-*.vsconfig
-*.vsp
-*.vspx
-*.tmp
-*.temp
-*.cache
-*.lock
-*.pid
-*.seed
-*.pid.lock
-*.stamp
-*.stamp.*
-*.timestamp
-*.run
-*.swp
-*.swo
-*~
+# OS
 .DS_Store
 Thumbs.db
 desktop.ini
-*.lnk
-*.url
 
-# ============================================================
-# D1 Database Migrations
-# ============================================================
-migrations/
-!migrations/README.md
+# Wrangler
+.wrangler/
+wrangler.toml
+.dev.vars
+
+# D1 Database
+*.db
+*.db-journal
 *.sqlite
 *.sqlite3
-*.d1
-*.db
-*.d1.*
-*.sql.bak
 
-# ============================================================
-# Worker Scripts (Compiled)
-# ============================================================
-*.compiled.js
-*.bundle.js
-*.min.js
-*.bundle.min.js
-worker-*.js
-build-worker.js
-*.worker.js
-*.bundle.js.map
-
-# ============================================================
-# TailwindCSS
-# ============================================================
-tailwind.config.js
-postcss.config.js
-*.css.map
-*.min.css
-*.bundle.css
-*.css.tmp
-
-# ============================================================
-# QR Code Assets
-# ============================================================
-*.qr.png
-*.qrcode.png
-*.qr-code.png
-qr-codes/
-!qr-codes/README.md
-*.qr.svg
-*.qrcode.svg
-
-# ============================================================
-# Cloudflare Specific
-# ============================================================
-.wrangler/
-.wrangler/**
-.edgeone/
-.edgeone/**
-cf-*.json
-cloudflare-*.json
-*.cf.json
-*.workers.dev.json
-*.d1.*.json
-*.r2.*.json
-
-# ============================================================
-# Package Manager Lock Files
-# ============================================================
-# npm
-package-lock.json
-npm-shrinkwrap.json
-
-# yarn
-yarn.lock
-.yarn/
-.yarnrc
-.yarnrc.yml
-
-# pnpm
-pnpm-lock.yaml
-pnpm-workspace.yaml
-
-# Bun
-bun.lockb
-bun.lock
-
-# Deno
-deno.lock
-
-# ============================================================
-# Profiling & Debugging
-# ============================================================
-node-trace-*.log
-chrome-debug-*.log
-v8-*.log
-*.cpuprofile
-*.heapsnapshot
-*.heapdump
-.hprof
-*.log.profile
-*.chromiumprofile
-
-# ============================================================
-# Terraform
-# ============================================================
-*.tfstate
-*.tfstate.*
-.terraform/
-terraform.tfvars
-terraform.tfvars.json
-*.tfplan
-*.tfjson
-*.terraform.lock.hcl
-
-# ============================================================
-# Kubernetes
-# ============================================================
-*.kubeconfig
-*.kubeconfig.*
-*.yaml.encrypted
-*.yml.encrypted
-helm/
-!helm/README.md
-k8s/
-!k8s/README.md
-charts/
-!charts/README.md
-*.kubeconfig.local
-
-# ============================================================
-# Ansible
-# ============================================================
-ansible/
-!ansible/README.md
-*.retry
-*.vault
-*.vault.*
-.inventory_*
-.ansible/
-*.ansible.yml
-*.ansible.yaml
-
-# ============================================================
-# Python
-# ============================================================
-*.pyc
-*.pyo
-__pycache__/
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/
-.dmypy.json
-dmypy.json
-*.py[cod]
-*.so
-.Python
-pip-log.txt
-pip-delete-this-directory.txt
-*.egg
-*.egg-info/
-.eggs/
-
-# ============================================================
-# Final Rules - Always Ignore
-# ============================================================
-# Never commit sensitive data
+# Secrets
+*.pem
+*.key
+*.crt
+secrets.json
 .secrets/
-.secrets.*
-*.secret
-*.private
-*.encrypted
-.credentials
-credentials.json
-service-account.json
-*.key.json
-*.pem.encrypted
-.env.*.encrypted
-*.gpg
-*.asc
-*.sig
-*.enc
-*.aes
+
+# Misc
+*.tmp
+*.temp
+.cache/
