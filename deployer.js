@@ -169,7 +169,7 @@ export default {
           },
         );
 
-        const finalUrl = `https://${workerName}.${devSub}.itzsepanta.github.io/RyxoPanel/panel`;
+        const finalUrl = `https://${workerName}.${devSub}.workers.dev/panel`;
 
         return new Response(
           JSON.stringify({
