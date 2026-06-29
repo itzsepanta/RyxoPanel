@@ -65,7 +65,7 @@
 ### Deploy in 4 Easy Steps
 
 #### Step 1: Get Your Token
-1. Visit the **[Ryxo Deployer](soon)**
+1. Visit the **[Ryxo Deployer](https://itzsepanta.github.io/RyxoPanel/)**
 2. Click **"Get Cloudflare Token"**
 3. Log in to Cloudflare if needed
 4. Scroll to the bottom and click **"Continue to summary"**
