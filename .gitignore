@@ -1,5 +1,5 @@
 # ============================================================
-# Ryxo Panel - Git Ignore File
+# Ryxo Panel - Git Ignore File (Enterprise Edition)
 # ============================================================
 
 # ============================================================
@@ -12,6 +12,11 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+pnpm-workspace.yaml
+.npm/
+.yarn/
+.yarnrc
+.yarnrc.yml
 
 # ============================================================
 # Environment & Configuration
@@ -22,6 +27,10 @@ pnpm-lock.yaml
 *.env
 *.env.*
 !.env.example
+.env.production
+.env.staging
+.env.development
+.env.test
 
 # ============================================================
 # Cloudflare Workers
@@ -36,6 +45,8 @@ wrangler.*.toml
 dist/
 build/
 out/
+.edgeone/
+.edgeone/**
 
 # ============================================================
 # IDE / Editor
@@ -55,6 +66,31 @@ out/
 .vscode/settings.json
 .vscode/launch.json
 .vscode/extensions.json
+.vscode/*.code-snippets
+.history/
+*.code-workspace
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+out/
+*.sublime-project
+*.sublime-workspace
+*.sublime-settings
+.sublime/
+.atom/
+*.atom-project
+.atom-build.json
+.brackets.json
+.vim/
+.vimrc
+.*.swp
+.*.swo
+.#*
+\#*#
+.*.emacs*
+.emacs*
+.eshell*
 
 # ============================================================
 # OS / System
@@ -68,6 +104,10 @@ Desktop.ini
 *.pid
 *.seed
 *.pid.lock
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+ehthumbs_vista.db
 
 # ============================================================
 # Backup & Temp Files
@@ -84,6 +124,8 @@ Desktop.ini
 backup/
 temp/
 tmp/
+*.~*
+*~
 
 # ============================================================
 # Database Files
@@ -98,6 +140,9 @@ tmp/
 *.d1.*
 migrations/*.sql
 !migrations/0000_initial.sql
+*.db.gz
+*.sqlite.gz
+*.sql.gz
 
 # ============================================================
 # Build / Distribution
@@ -113,6 +158,15 @@ output/
 *.chunk.css
 coverage/
 .nyc_output/
+*.map
+*.tsbuildinfo
+.eslintcache
+.parcel-cache/
+.cache/
+.next/
+.nuxt/
+.svelte-kit/
+.storybook/
 
 # ============================================================
 # Test Files
@@ -128,6 +182,8 @@ coverage/
 .nyc_output/
 jest.config.js
 vitest.config.js
+*.test.js.map
+*.spec.js.map
 
 # ============================================================
 # Documentation
@@ -138,6 +194,9 @@ docs/_static/
 docs/_templates/
 *.html.tmp
 *.pdf.tmp
+*.doc.tmp
+*.md.tmp
+docs/*.log
 
 # ============================================================
 # Deployment
@@ -148,6 +207,8 @@ deploy.log
 deploy-*.log
 *.cf.*
 cloudflare-*.json
+*.deployment.json
+*.deployment.log
 
 # ============================================================
 # SSL / Certificates
@@ -164,41 +225,44 @@ ssl/
 cert/
 certs/
 keys/
+*.pem.encrypted
+*.key.encrypted
 
 # ============================================================
-# Project Specific
+# Project Specific - Ryxo Panel
 # ============================================================
-# Ryxo Panel specific files
 users_backup.json
 settings_backup.json
 traffic_*.json
 *.cache.json
 *.metadata.json
+*.temp.json
+*.tmp.json
+temp_users/
+user_data_*.json
+session_*.tmp
+user_sessions.json
+user_traffic.json
+*.userdata.json
+*.traffic.json
+*.session.json
+users.json
+users_data.json
+traffic_data.json
+usage_data.json
+user_configs.json
+subscriptions.json
 
 # Photos (except for documentation)
 photos/
 !photos/README.md
 screenshots/
 !screenshots/README.md
-
-# Temporary user data
-temp_users/
-user_data_*.json
-session_*.tmp
-
-# ============================================================
-# Dependency Files
-# ============================================================
-# Wrangler
-.versions/
-node_modules/.cache/
-.eslintcache
-.parcel-cache/
-.cache/
-.next/
-.nuxt/
-.svelte-kit/
-.storybook/
+*.png.tmp
+*.jpg.tmp
+*.jpeg.tmp
+*.gif.tmp
+*.svg.tmp
 
 # ============================================================
 # Git
@@ -208,6 +272,8 @@ node_modules/.cache/
 *.gitignore
 *.gitmodules
 .git/
+.gitignore.tmp
+.gitattributes.tmp
 
 # ============================================================
 # Archive / Compressed
@@ -220,6 +286,10 @@ node_modules/.cache/
 *.gz
 *.bz2
 *.xz
+*.tar
+*.iso
+*.dmg
+*.pkg
 
 # ============================================================
 # Docker
@@ -229,6 +299,8 @@ docker-compose.yml
 .dockerignore
 *.dockerfile
 docker/
+*.dockerignore
+.docker/
 
 # ============================================================
 # CI / CD
@@ -242,6 +314,9 @@ azure-pipelines.yml
 .gitlab-ci.yml
 .github/workflows/
 !github/workflows/release.yml
+.bitbucket/
+.jenkins/
+.gitlab/
 
 # ============================================================
 # Logs
@@ -255,68 +330,11 @@ pnpm-debug.log*
 lerna-debug.log*
 worker-*.log
 cf-*.log
-
-# ============================================================
-# IDE Specific - Visual Studio Code
-# ============================================================
-.history/
-*.code-workspace
-.vscode/launch.json
-.vscode/tasks.json
-.vscode/settings.json
-.vscode/extensions.json
-.vscode/*.code-snippets
-
-# ============================================================
-# IDE Specific - WebStorm / IntelliJ
-# ============================================================
-.idea/
-*.iml
-*.ipr
-*.iws
-out/
-.idea_modules/
-
-# ============================================================
-# IDE Specific - Sublime Text
-# ============================================================
-*.sublime-project
-*.sublime-workspace
-*.sublime-settings
-.sublime/
-
-# ============================================================
-# IDE Specific - Atom
-# ============================================================
-.atom/
-*.atom-project
-.atom-build.json
-
-# ============================================================
-# IDE Specific - Brackets
-# ============================================================
-.brackets.json
-
-# ============================================================
-# IDE Specific - Vim
-# ============================================================
-*.swp
-*.swo
-*~
-.*.swp
-.*.swo
-.vim/
-.vimrc
-
-# ============================================================
-# IDE Specific - Emacs
-# ============================================================
-*~
-.#*
-\#*#
-.*.emacs*
-.emacs*
-.eshell*
+access.log
+error.log
+debug.log
+combined.log
+*.log.gz
 
 # ============================================================
 # Security
@@ -339,15 +357,20 @@ secrets/
 password.txt
 tokens.txt
 api-keys.json
+*.token
+*.apikey
+*.secretkey
 
 # ============================================================
-# Performance
+# Performance & Profiling
 # ============================================================
 *.prof
 *.heapsnapshot
 *.cpuprofile
 *.heapprofile
 .performance/
+*.v8.log
+*.trace.log
 
 # ============================================================
 # Miscellaneous
@@ -368,6 +391,14 @@ api-keys.json
 *.stamp.*
 *.timestamp
 *.run
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+*.url
 
 # ============================================================
 # D1 Database Migrations
@@ -378,6 +409,8 @@ migrations/
 *.sqlite3
 *.d1
 *.db
+*.d1.*
+*.sql.bak
 
 # ============================================================
 # Worker Scripts (Compiled)
@@ -388,6 +421,8 @@ migrations/
 *.bundle.min.js
 worker-*.js
 build-worker.js
+*.worker.js
+*.bundle.js.map
 
 # ============================================================
 # TailwindCSS
@@ -397,6 +432,7 @@ postcss.config.js
 *.css.map
 *.min.css
 *.bundle.css
+*.css.tmp
 
 # ============================================================
 # QR Code Assets
@@ -406,21 +442,8 @@ postcss.config.js
 *.qr-code.png
 qr-codes/
 !qr-codes/README.md
-
-# ============================================================
-# User Data (Never Commit!)
-# ============================================================
-users.json
-users_data.json
-traffic_data.json
-usage_data.json
-user_configs.json
-subscriptions.json
-user_sessions.json
-user_traffic.json
-*.userdata.json
-*.traffic.json
-*.session.json
+*.qr.svg
+*.qrcode.svg
 
 # ============================================================
 # Cloudflare Specific
@@ -433,6 +456,8 @@ cf-*.json
 cloudflare-*.json
 *.cf.json
 *.workers.dev.json
+*.d1.*.json
+*.r2.*.json
 
 # ============================================================
 # Package Manager Lock Files
@@ -451,6 +476,13 @@ yarn.lock
 pnpm-lock.yaml
 pnpm-workspace.yaml
 
+# Bun
+bun.lockb
+bun.lock
+
+# Deno
+deno.lock
+
 # ============================================================
 # Profiling & Debugging
 # ============================================================
@@ -461,9 +493,11 @@ v8-*.log
 *.heapsnapshot
 *.heapdump
 .hprof
+*.log.profile
+*.chromiumprofile
 
 # ============================================================
-# Terraform (if used for infrastructure)
+# Terraform
 # ============================================================
 *.tfstate
 *.tfstate.*
@@ -472,9 +506,10 @@ terraform.tfvars
 terraform.tfvars.json
 *.tfplan
 *.tfjson
+*.terraform.lock.hcl
 
 # ============================================================
-# Kubernetes (if used)
+# Kubernetes
 # ============================================================
 *.kubeconfig
 *.kubeconfig.*
@@ -486,9 +521,10 @@ k8s/
 !k8s/README.md
 charts/
 !charts/README.md
+*.kubeconfig.local
 
 # ============================================================
-# Ansible (if used)
+# Ansible
 # ============================================================
 ansible/
 !ansible/README.md
@@ -497,9 +533,11 @@ ansible/
 *.vault.*
 .inventory_*
 .ansible/
+*.ansible.yml
+*.ansible.yaml
 
 # ============================================================
-# Python (if used for scripts)
+# Python
 # ============================================================
 *.pyc
 *.pyo
@@ -511,6 +549,14 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+*.py[cod]
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg
+*.egg-info/
+.eggs/
 
 # ============================================================
 # Final Rules - Always Ignore
@@ -527,3 +573,8 @@ service-account.json
 *.key.json
 *.pem.encrypted
 .env.*.encrypted
+*.gpg
+*.asc
+*.sig
+*.enc
+*.aes
