@@ -1231,17 +1231,19 @@ function closeSocketQuietly(socket) {
 }
 
 // ============================================================
-// 9. HTML TEMPLATES (مهمترین بخش - پنل کامل)
+// 9. HTML TEMPLATES
 // ============================================================
 const HTML_TEMPLATES = {
-  nginx: `<!DOCTYPE html>
-<html lang="fa" dir="rtl" class="dark">
+  panel: `<!DOCTYPE html>
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ryxo Panel - Access</title>
+    <title>Ryxo Panel</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -1253,21 +1255,32 @@ const HTML_TEMPLATES = {
             }
         }
     </script>
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+        .gradient-text {
+            background: linear-gradient(135deg, #818cf8, #a78bfa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
-    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-8 text-center flex flex-col items-center gap-4">
-        <div class="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full mb-2">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-black">
+                <span class="gradient-text">Ryxo</span>
+                <span class="text-white/90">Panel</span>
+            </h1>
+            <p class="text-lg text-gray-500 dark:text-zinc-400">Advanced VLESS Configuration Management</p>
         </div>
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Ryxo Panel - Admin Access</h2>
-        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
-            To access the panel, add 
-            <span class="inline-block px-2 py-1 bg-gray-100 dark:bg-amoled-input border border-gray-200 dark:border-zinc-800 rounded-md font-mono text-blue-500 font-bold mx-1 shadow-sm" dir="ltr">/panel</span> 
-            to the end of your browser address.
-        </p>
-        <button onclick="window.location.href='/panel'" class="mt-4 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition-colors duration-200 shadow-lg shadow-blue-600/20 font-bold">
-            Enter Panel
-        </button>
+        <div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-8 shadow-sm max-w-2xl mx-auto text-center">
+            <p class="text-2xl mb-4">🎉 Panel is ready!</p>
+            <p class="text-gray-600 dark:text-zinc-300">Use the deployer to create users and manage configurations.</p>
+            <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                <p class="text-sm text-gray-600 dark:text-zinc-300">📌 To get started, create a user using the deployer panel.</p>
+            </div>
+        </div>
     </div>
 </body>
 </html>`,
