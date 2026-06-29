@@ -1,209 +1,190 @@
 export default {
   async fetch(request, env, ctx) {
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
     const url = new URL(request.url);
 
-    // ============================================================
-    // ROUTE: Serve HTML Interface (GET /)
-    // ============================================================
+    // Health check
     if (request.method === "GET" && url.pathname === "/") {
-      return new Response(getHtmlContent(), {
+      return new Response("Ryxo Deployer is running! 🚀", {
         headers: {
-          "Content-Type": "text/html;charset=UTF-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0"
+          "Content-Type": "text/plain",
+          "Access-Control-Allow-Origin": "*",
         },
       });
     }
 
     // ============================================================
-    // ROUTE: Deploy New Panel (POST /api/deploy)
+    // DEPLOY NEW PANEL
     // ============================================================
     if (request.method === "POST" && url.pathname === "/api/deploy") {
       try {
         const { token } = await request.json();
         if (!token) {
-          throw new Error("Authentication token is required.");
+          throw new Error("Token is required");
         }
 
         const headers = {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         };
 
-        // Validate token and get account info
-        const accountResponse = await fetch(
+        // Get account info
+        const accRes = await fetch(
           "https://api.cloudflare.com/client/v4/accounts",
-          { headers }
+          { headers },
         );
-        const accountData = await accountResponse.json();
+        const accData = await accRes.json();
 
-        if (!accountData.success || accountData.result.length === 0) {
+        if (!accData.success || accData.result.length === 0) {
           throw new Error("Account not found. Please verify your token.");
         }
 
-        const accountId = accountData.result[0].id;
+        const accountId = accData.result[0].id;
 
-        // Get or create worker subdomain
-        let devSubdomain = null;
-        const subdomainResponse = await fetch(
+        // Get or create subdomain
+        let devSub = null;
+        const subRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-          { headers }
+          { headers },
         );
-        const subdomainData = await subdomainResponse.json();
+        const subData = await subRes.json();
 
-        if (subdomainData.success && subdomainData.result && subdomainData.result.subdomain) {
-          devSubdomain = subdomainData.result.subdomain;
+        if (subData.success && subData.result && subData.result.subdomain) {
+          devSub = subData.result.subdomain;
         } else {
-          const newSubdomain = `ryxo-${Math.random().toString(36).substring(2, 8)}`;
-          const createSubdomain = await fetch(
+          const newSub = `ryxo-${Math.random().toString(36).substring(2, 8)}`;
+          const createSub = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
             {
               method: "PUT",
               headers,
-              body: JSON.stringify({ subdomain: newSubdomain }),
-            }
+              body: JSON.stringify({ subdomain: newSub }),
+            },
           );
-          const createSubdomainData = await createSubdomain.json();
+          const createSubData = await createSub.json();
 
-          if (!createSubdomainData.success) {
-            const errorMsg = createSubdomainData.errors?.length > 0
-              ? createSubdomainData.errors[0].message
-              : "Unknown error";
+          if (!createSubData.success) {
+            const errorMsg =
+              createSubData.errors?.length > 0
+                ? createSubData.errors[0].message
+                : "Unknown error";
             throw new Error(`SUBDOMAIN_ERROR|${errorMsg}`);
           }
-          devSubdomain = newSubdomain;
+          devSub = newSub;
         }
 
-        // Generate unique names
         const uniqueSuffix = Math.random().toString(36).substring(2, 8);
         const workerName = `ryxo-panel-${uniqueSuffix}`;
-        const databaseName = `ryxo-db-${uniqueSuffix}`;
+        const dbName = `ryxo-db-${uniqueSuffix}`;
 
         // Create D1 database
-        const databaseResponse = await fetch(
+        const dbRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database`,
           {
             method: "POST",
             headers,
-            body: JSON.stringify({ name: databaseName }),
-          }
+            body: JSON.stringify({ name: dbName }),
+          },
         );
-        const databaseData = await databaseResponse.json();
+        const dbData = await dbRes.json();
 
-        if (!databaseData.success) {
-          const errorMsg = databaseData.errors?.length > 0
-            ? databaseData.errors[0].message
-            : "Unknown error";
+        if (!dbData.success) {
+          const errorMsg =
+            dbData.errors?.length > 0
+              ? dbData.errors[0].message
+              : "Unknown error";
           throw new Error(`DATABASE_ERROR|${errorMsg}`);
         }
-        const databaseId = databaseData.result.uuid;
+        const dbUuid = dbData.result.uuid;
 
-        // Wait for database to be ready
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        // Fetch latest Ryxo panel source code from GitHub
-        const sourceResponse = await fetch(
-          `https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=${Date.now()}`
+        // Fetch panel source
+        const githubRes = await fetch(
+          "https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=" +
+            Date.now(),
         );
-        if (!sourceResponse.ok) {
+        if (!githubRes.ok)
           throw new Error("Failed to fetch panel source from GitHub.");
-        }
-        const sourceCode = await sourceResponse.text();
+        const ryxoCode = await githubRes.text();
 
-        // Build worker metadata
         const metadata = {
           main_module: "main.js",
           compatibility_date: "2024-02-08",
-          compatibility_flags: ["nodejs_compat"],
           bindings: [
-            {
-              type: "d1",
-              name: "DB",
-              id: databaseId,
-            },
-            {
-              type: "secret_text",
-              name: "CF_API_TOKEN",
-              text: token,
-            },
-            {
-              type: "secret_text",
-              name: "CF_ACCOUNT_ID",
-              text: accountId,
-            },
+            { type: "d1", name: "DB", id: dbUuid },
+            { type: "secret_text", name: "CF_API_TOKEN", text: token },
+            { type: "secret_text", name: "CF_ACCOUNT_ID", text: accountId },
           ],
         };
 
-        // Prepare deployment payload
         const formData = new FormData();
         formData.append(
           "metadata",
-          new Blob([JSON.stringify(metadata)], {
-            type: "application/json",
-          })
+          new Blob([JSON.stringify(metadata)], { type: "application/json" }),
         );
         formData.append(
           "main.js",
-          new Blob([sourceCode], {
-            type: "application/javascript+module",
-          }),
-          "main.js"
+          new Blob([ryxoCode], { type: "application/javascript+module" }),
+          "main.js",
         );
 
         // Deploy worker
-        const deployResponse = await fetch(
+        const deployRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}`,
           {
             method: "PUT",
-            headers: {
-              "Authorization": `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
             body: formData,
-          }
+          },
         );
-        const deployData = await deployResponse.json();
+        const deployData = await deployRes.json();
 
         if (!deployData.success) {
-          const errorMsg = deployData.errors?.length > 0
-            ? deployData.errors[0].message
-            : "Unknown error";
+          const errorMsg =
+            deployData.errors?.length > 0
+              ? deployData.errors[0].message
+              : "Unknown error";
           throw new Error(`DEPLOYMENT_ERROR|${errorMsg}`);
         }
 
-        // Enable subdomain routing
-        const routeResponse = await fetch(
+        // Enable subdomain
+        await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}/subdomain`,
           {
             method: "POST",
             headers,
             body: JSON.stringify({ enabled: true }),
-          }
+          },
         );
 
-        if (!routeResponse.ok) {
-          throw new Error("Failed to activate worker route.");
-        }
-
-        // Generate final URL
-        const panelUrl = `https://${workerName}.${devSubdomain}.workers.dev/panel`;
+        const finalUrl = `https://${workerName}.${devSub}.workers.dev/panel`;
 
         return new Response(
           JSON.stringify({
             success: true,
-            url: panelUrl,
+            url: finalUrl,
             worker: workerName,
-            database: databaseName,
-            subdomain: devSubdomain,
+            database: dbName,
           }),
           {
             headers: {
               "Content-Type": "application/json",
-              "Cache-Control": "no-cache",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
-
       } catch (error) {
         return new Response(
           JSON.stringify({
@@ -215,44 +196,45 @@ export default {
             status: 400,
             headers: {
               "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
       }
     }
 
     // ============================================================
-    // ROUTE: List Existing Panels (POST /api/list-panels)
+    // LIST PANELS
     // ============================================================
     if (request.method === "POST" && url.pathname === "/api/list-panels") {
       try {
         const { token } = await request.json();
         if (!token) {
-          throw new Error("Authentication token is required.");
+          throw new Error("Token is required");
         }
 
         const headers = {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         };
 
-        const accountResponse = await fetch(
+        const accRes = await fetch(
           "https://api.cloudflare.com/client/v4/accounts",
-          { headers }
+          { headers },
         );
-        const accountData = await accountResponse.json();
+        const accData = await accRes.json();
 
-        if (!accountData.success || accountData.result.length === 0) {
+        if (!accData.success || accData.result.length === 0) {
           throw new Error("Account not found.");
         }
 
-        const accountId = accountData.result[0].id;
+        const accountId = accData.result[0].id;
 
-        const scriptsResponse = await fetch(
+        const scriptsRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts`,
-          { headers }
+          { headers },
         );
-        const scriptsData = await scriptsResponse.json();
+        const scriptsData = await scriptsRes.json();
 
         if (!scriptsData.success) {
           throw new Error("Failed to fetch worker scripts.");
@@ -260,203 +242,104 @@ export default {
 
         const panels = [];
         for (const script of scriptsData.result) {
-          if (script.id.startsWith("ryxo-panel") || script.id.startsWith("ez-")) {
-            panels.push({
-              name: script.id,
-              created: script.created_on,
-              modified: script.modified_on,
-            });
+          if (
+            script.id.startsWith("ryxo-panel") ||
+            script.id.startsWith("ez-")
+          ) {
+            panels.push({ name: script.id });
           }
-        }
-
-        // Get latest version from GitHub
-        let latestVersion = "Unknown";
-        try {
-          const versionResponse = await fetch(
-            `https://raw.githubusercontent.com/itzsepanta/ryxopanel/main/main.js?t=${Date.now()}`
-          );
-          if (versionResponse.ok) {
-            const versionText = await versionResponse.text();
-            const versionMatch = versionText.match(
-              /CURRENT_VERSION\s*=\s*['"]([0-9.]+)['"]/i
-            );
-            if (versionMatch && versionMatch[1]) {
-              latestVersion = `v${versionMatch[1]}`;
-            }
-          }
-        } catch (error) {
-          // Silent fail - version check is optional
         }
 
         return new Response(
           JSON.stringify({
             success: true,
             panels,
-            latestVersion,
+            latestVersion: "v1.3.9",
             total: panels.length,
           }),
           {
             headers: {
               "Content-Type": "application/json",
-              "Cache-Control": "no-cache",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
-
       } catch (error) {
         return new Response(
-          JSON.stringify({
-            success: false,
-            error: error.message,
-          }),
+          JSON.stringify({ success: false, error: error.message }),
           {
             status: 400,
             headers: {
               "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
       }
     }
 
     // ============================================================
-    // ROUTE: Get Panel Version (POST /api/get-panel-version)
-    // ============================================================
-    if (request.method === "POST" && url.pathname === "/api/get-panel-version") {
-      try {
-        const { token, scriptName } = await request.json();
-        if (!token || !scriptName) {
-          throw new Error("Token and script name are required.");
-        }
-
-        const headers = {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
-
-        const accountResponse = await fetch(
-          "https://api.cloudflare.com/client/v4/accounts",
-          { headers }
-        );
-        const accountData = await accountResponse.json();
-        const accountId = accountData.result[0].id;
-
-        const contentResponse = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`,
-          { headers }
-        );
-        const contentText = await contentResponse.text();
-
-        let version = "Unknown";
-        const versionMatch = contentText.match(
-          /CURRENT_VERSION\s*=\s*['"]([0-9.]+)['"]/i
-        );
-
-        if (versionMatch && versionMatch[1]) {
-          version = `v${versionMatch[1]}`;
-        } else {
-          // Fallback: check HTML for version badge
-          const badgeMatch = contentText.match(
-            /id=["']panel-version["'][^>]*>\s*v?([0-9.]+)\s*<\/span>/i
-          );
-          if (badgeMatch && badgeMatch[1]) {
-            version = `v${badgeMatch[1]}`;
-          }
-        }
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            version,
-            scriptName,
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-      } catch (error) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            version: "Unknown",
-            error: error.message,
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-      }
-    }
-
-    // ============================================================
-    // ROUTE: Update Panel (POST /api/do-update)
+    // UPDATE PANEL
     // ============================================================
     if (request.method === "POST" && url.pathname === "/api/do-update") {
       try {
         const { token, scriptName } = await request.json();
         if (!token || !scriptName) {
-          throw new Error("Token and script name are required.");
+          throw new Error("Token and script name are required");
         }
 
         const headers = {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         };
 
-        const accountResponse = await fetch(
+        const accRes = await fetch(
           "https://api.cloudflare.com/client/v4/accounts",
-          { headers }
+          { headers },
         );
-        const accountData = await accountResponse.json();
+        const accData = await accRes.json();
 
-        if (!accountData.success || accountData.result.length === 0) {
+        if (!accData.success || accData.result.length === 0) {
           throw new Error("Account not found.");
         }
 
-        const accountId = accountData.result[0].id;
+        const accountId = accData.result[0].id;
 
-        // Fetch latest source from GitHub
-        const sourceResponse = await fetch(
-          `https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=${Date.now()}`
+        // Fetch latest source
+        const githubRes = await fetch(
+          "https://raw.githubusercontent.com/itzsepanta/ryxopanel/refs/heads/main/main.js?t=" +
+            Date.now(),
         );
-        if (!sourceResponse.ok) {
+        if (!githubRes.ok)
           throw new Error("Failed to fetch latest source from GitHub.");
-        }
-        const newSource = await sourceResponse.text();
+        const newCode = await githubRes.text();
 
         // Get existing bindings
-        const bindingsResponse = await fetch(
+        const bindingsRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/bindings`,
-          { headers }
+          { headers },
         );
-        const bindingsData = await bindingsResponse.json();
+        const bindingsData = await bindingsRes.json();
 
-        if (!bindingsData.success) {
+        if (!bindingsData.success)
           throw new Error("Failed to fetch existing bindings.");
-        }
 
-        // Preserve existing bindings
-        const preservedBindings = [];
-        for (const binding of bindingsData.result) {
-          if (binding.type === "d1") {
-            preservedBindings.push({
+        const newBindings = [];
+        for (const b of bindingsData.result) {
+          if (b.type === "d1") {
+            newBindings.push({
               type: "d1",
-              name: binding.name,
-              id: binding.database_id || binding.id,
+              name: b.name,
+              id: b.database_id || b.id,
             });
-          } else if (binding.name === "CF_API_TOKEN") {
-            preservedBindings.push({
+          } else if (b.name === "CF_API_TOKEN") {
+            newBindings.push({
               type: "secret_text",
               name: "CF_API_TOKEN",
               text: token,
             });
-          } else if (binding.name === "CF_ACCOUNT_ID") {
-            preservedBindings.push({
+          } else if (b.name === "CF_ACCOUNT_ID") {
+            newBindings.push({
               type: "secret_text",
               name: "CF_ACCOUNT_ID",
               text: accountId,
@@ -464,48 +347,38 @@ export default {
           }
         }
 
-        // Build update metadata
         const metadata = {
           main_module: "main.js",
           compatibility_date: "2024-02-08",
-          compatibility_flags: ["nodejs_compat"],
-          bindings: preservedBindings,
+          bindings: newBindings,
         };
 
-        // Prepare update payload
         const formData = new FormData();
         formData.append(
           "metadata",
-          new Blob([JSON.stringify(metadata)], {
-            type: "application/json",
-          })
+          new Blob([JSON.stringify(metadata)], { type: "application/json" }),
         );
         formData.append(
           "main.js",
-          new Blob([newSource], {
-            type: "application/javascript+module",
-          }),
-          "main.js"
+          new Blob([newCode], { type: "application/javascript+module" }),
+          "main.js",
         );
 
-        // Deploy update
-        const deployResponse = await fetch(
+        const deployRes = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}`,
           {
             method: "PUT",
-            headers: {
-              "Authorization": `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
             body: formData,
-          }
+          },
         );
 
-        const deployData = await deployResponse.json();
-
+        const deployData = await deployRes.json();
         if (!deployData.success) {
-          const errorMsg = deployData.errors?.length > 0
-            ? deployData.errors[0].message
-            : "Unknown error";
+          const errorMsg =
+            deployData.errors?.length > 0
+              ? deployData.errors[0].message
+              : "Unknown error";
           throw new Error(`UPDATE_ERROR|${errorMsg}`);
         }
 
@@ -518,824 +391,24 @@ export default {
           {
             headers: {
               "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
-
       } catch (error) {
         return new Response(
-          JSON.stringify({
-            success: false,
-            error: error.message,
-          }),
+          JSON.stringify({ success: false, error: error.message }),
           {
             status: 400,
             headers: {
               "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
             },
-          }
+          },
         );
       }
     }
 
-    // ============================================================
-    // ROUTE: Not Found (404)
-    // ============================================================
-    return new Response("Not Found", {
-      status: 404,
-      headers: {
-        "Content-Type": "text/plain",
-      },
-    });
+    return new Response("Not Found", { status: 404 });
   },
 };
-
-// ============================================================
-// HTML INTERFACE
-// ============================================================
-function getHtmlContent() {
-  return `<!DOCTYPE html>
-<html lang="fa" dir="rtl" class="dark">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ryxo Panel Deployer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet"
-        type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
-    <style>
-        body {
-            font-family: 'Vazirmatn', sans-serif;
-        }
-
-        .token-input::-ms-reveal,
-        .token-input::-ms-clear {
-            display: none;
-        }
-
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #d1d5db;
-            border-radius: 4px;
-        }
-
-        .dark ::-webkit-scrollbar-thumb {
-            background: #3f3f46;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
-        }
-
-        .dark ::-webkit-scrollbar-thumb:hover {
-            background: #52525b;
-        }
-
-        * {
-            scrollbar-width: thin;
-            scrollbar-color: #d1d5db transparent;
-        }
-
-        .dark * {
-            scrollbar-color: #3f3f46 transparent;
-        }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #818cf8, #a78bfa, #34d399);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(145deg, #0b8a3a, #0a6b2e);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: white;
-            font-weight: 900;
-            font-size: 1rem;
-            padding: 0.9rem 1.5rem;
-            border-radius: 1rem;
-            width: 100%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            box-shadow: 0 8px 30px rgba(11, 138, 58, 0.15);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            background: linear-gradient(145deg, #0e9e45, #0b7a32);
-            box-shadow: 0 12px 40px rgba(11, 138, 58, 0.25);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            transform: none;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary {
-            background: linear-gradient(145deg, #1a3d7a, #0f2b5c);
-            border: 1px solid rgba(59, 130, 246, 0.15);
-            color: white;
-            font-weight: 900;
-            font-size: 0.95rem;
-            padding: 0.9rem 1.5rem;
-            border-radius: 1rem;
-            width: 100%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            box-shadow: 0 8px 30px rgba(26, 61, 122, 0.1);
-        }
-
-        .btn-secondary:hover {
-            transform: translateY(-2px);
-            background: linear-gradient(145deg, #1f4a94, #13346e);
-            box-shadow: 0 12px 40px rgba(26, 61, 122, 0.2);
-        }
-
-        .btn-token {
-            background: linear-gradient(145deg, #d94800, #b83d00);
-            border: 1px solid rgba(255, 148, 61, 0.2);
-            color: white;
-            font-weight: 900;
-            font-size: 0.9rem;
-            padding: 0.9rem 1.5rem;
-            border-radius: 1rem;
-            width: 100%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            box-shadow: 0 8px 30px rgba(217, 72, 0, 0.12);
-            text-decoration: none;
-        }
-
-        .btn-token:hover {
-            transform: translateY(-2px);
-            background: linear-gradient(145deg, #e35802, #c44200);
-            box-shadow: 0 12px 40px rgba(217, 72, 0, 0.2);
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            color: #9ca3af;
-            padding: 0.6rem 1.2rem;
-            border-radius: 3rem;
-            font-size: 0.8rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.6rem;
-            text-decoration: none;
-        }
-
-        .btn-outline:hover {
-            border-color: rgba(79, 70, 229, 0.3);
-            color: white;
-            background: rgba(79, 70, 229, 0.06);
-            transform: translateY(-1px);
-        }
-    </style>
-</head>
-
-<body
-    class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4">
-
-    <div id="mainCard"
-        class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl p-8 relative overflow-hidden z-10">
-
-        <div class="absolute -left-12 -top-12 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div
-            class="absolute -right-12 -bottom-12 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none">
-        </div>
-
-        <div class="text-center mb-6 relative z-10">
-            <div
-                class="inline-flex items-center justify-center p-3 bg-blue-950/60 border border-blue-500 text-blue-400 rounded-2xl mb-4 shadow-[0_0_15px_rgba(59,130,246,0.4)]">
-                <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                </svg>
-            </div>
-            <h2 class="text-2xl font-black text-gray-900 dark:text-white mb-1">
-                <span class="gradient-text">Ryxo</span> Auto Deployer
-            </h2>
-            <p class="text-sm font-medium text-gray-500 dark:text-zinc-400">Enterprise · Zero-touch · 4-step deploy</p>
-            <div class="flex items-center justify-center gap-2 mt-3">
-                <span
-                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/15 text-emerald-400 text-[11px] font-bold">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    v2.0.0
-                </span>
-                <span
-                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/15 text-blue-400 text-[11px] font-bold">
-                    <i class="fas fa-cloud text-[10px]"></i>
-                    Enterprise
-                </span>
-            </div>
-        </div>
-
-        <div class="space-y-5 relative z-10">
-
-            <!-- Get Token -->
-            <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22workers_subdomain%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_analytics%22%2C%22type%22%3A%22read%22%7D%5D&accountId=*&zoneId=all&name=Ryxo-Deployer-Token"
-                target="_blank" class="btn-token">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
-                    </path>
-                </svg>
-                Get Cloudflare Token
-            </a>
-
-            <div class="mt-2 text-center mb-4">
-                <p class="text-[11px] text-gray-500 dark:text-zinc-400 font-medium leading-relaxed">
-                    After login → scroll to bottom → click
-                    <span class="font-bold text-blue-500">Continue to summary</span>
-                </p>
-            </div>
-
-            <!-- Token Input -->
-            <div class="relative">
-                <input type="password" id="apiToken" placeholder="Enter your token..." autocomplete="off"
-                    spellcheck="false"
-                    class="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono text-left text-gray-900 dark:text-zinc-100 transition token-input"
-                    dir="ltr">
-                <button type="button" onclick="toggleToken()"
-                    class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 transition">
-                    <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
-                        </path>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- Deploy Button -->
-            <button id="deployBtn" onclick="startDeploy()" class="btn-primary">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                </svg>
-                Deploy Panel
-            </button>
-
-            <!-- Update Button -->
-            <button type="button" id="openUpdateModalBtn" onclick="toggleUpdateModal(true)" class="btn-secondary">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                    </path>
-                </svg>
-                Update Panels
-            </button>
-
-            <!-- Status Container -->
-            <div id="status-container"
-                class="hidden mt-4 bg-gray-50 dark:bg-zinc-900/50 rounded-xl p-4 border border-gray-200 dark:border-zinc-800/80">
-                <div class="flex justify-between items-center mb-2.5">
-                    <span id="status-text" class="text-xs font-bold text-gray-600 dark:text-zinc-300">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        Initializing...
-                    </span>
-                    <span id="status-pct" class="text-xs font-black text-emerald-600 dark:text-emerald-500">0%</span>
-                </div>
-                <div class="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                    <div id="progressBar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
-                        style="width: 0%"></div>
-                </div>
-            </div>
-
-            <!-- Error Box -->
-            <div id="error-box"
-                class="hidden mt-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl text-sm text-red-600 dark:text-red-400 text-center font-medium">
-            </div>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="flex items-center gap-4 mt-6 z-10">
-        <a href="https://github.com/itzsepanta/RyxoPanel" target="_blank" class="btn-outline">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path fill-rule="evenodd" clip-rule="evenodd"
-                    d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z" />
-            </svg>
-            Source Code
-        </a>
-        <a href="https://t.me/RyxoStudio" target="_blank" class="btn-outline">
-            <svg class="w-5 h-5 text-sky-500" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z" />
-            </svg>
-            @RyxoStudio
-        </a>
-    </div>
-
-    <!-- Update Modal -->
-    <div id="update-modal"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
-        <div id="update-modal-card"
-            class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl p-6 transform transition-all scale-95 opacity-0 duration-200 flex flex-col max-h-[85vh]">
-            <div class="flex justify-between items-center mb-6 shrink-0">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white">
-                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                        </path>
-                    </svg>
-                    Update Ryxo Panels
-                </h3>
-                <button onclick="toggleUpdateModal(false)"
-                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
-                        </path>
-                    </svg>
-                </button>
-            </div>
-
-            <div class="space-y-4 shrink-0">
-                <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22workers_subdomain%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_analytics%22%2C%22type%22%3A%22read%22%7D%5D&accountId=*&zoneId=all&name=Ryxo-Deployer-Token"
-                    target="_blank" class="btn-token" style="font-size:0.85rem; padding:0.8rem;">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
-                        </path>
-                    </svg>
-                    Get Cloudflare Token
-                </a>
-                <div class="mt-2 text-center mb-4">
-                    <p class="text-[11px] text-gray-500 dark:text-zinc-400 font-medium leading-relaxed">
-                        After login → scroll to bottom → click
-                        <span class="font-bold text-blue-500">Continue to summary</span>
-                    </p>
-                </div>
-                <input type="password" id="updateApiToken" placeholder="Enter your token..." autocomplete="off"
-                    spellcheck="false"
-                    class="w-full px-4 py-3 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono text-left text-gray-900 dark:text-zinc-100 transition"
-                    dir="ltr">
-
-                <button id="checkPanelsBtn" onclick="checkExistingPanels()"
-                    class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-md transition duration-300">
-                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z">
-                        </path>
-                    </svg>
-                    Check Existing Panels
-                </button>
-            </div>
-
-            <div id="panels-list-container" class="mt-6 hidden overflow-y-auto space-y-3 pr-1 pb-2">
-            </div>
-
-            <div id="update-status" class="hidden mt-4 text-center text-sm font-bold shrink-0 p-3 rounded-xl"></div>
-        </div>
-    </div>
-
-    <script>
-        // ============================================================
-        // CONFIGURATION
-        // ============================================================
-        // IMPORTANT: Replace this URL with your actual Worker URL
-        const WORKER_URL = 'https://ryxo-deployer.sepantagamer724.workers.dev';
-
-        // ============================================================
-        // HELPERS
-        // ============================================================
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        function $(id) {
-            return document.getElementById(id);
-        }
-
-        function showStatus(text, pct) {
-            const container = $('status-container');
-            container.classList.remove('hidden');
-            $('status-text').innerHTML = text;
-            $('status-pct').innerText = pct + '%';
-            $('progressBar').style.width = pct + '%';
-        }
-
-        function hideStatus() {
-            $('status-container').classList.add('hidden');
-        }
-
-        function showError(msg) {
-            const box = $('error-box');
-            box.innerHTML = msg;
-            box.classList.remove('hidden');
-        }
-
-        function hideError() {
-            $('error-box').classList.add('hidden');
-        }
-
-        function clearSuccess() {
-            const oldSuccess = document.getElementById('successDiv');
-            if (oldSuccess) oldSuccess.remove();
-        }
-
-        function showSuccess(url) {
-            clearSuccess();
-            const mainCard = $('mainCard');
-            const div = document.createElement('div');
-            div.id = 'successDiv';
-            div.className = 'mt-4 text-center';
-            div.innerHTML = `
-                <div class="text-emerald-600 dark:text-emerald-400 font-bold text-sm mb-2">
-                    <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Panel deployed successfully
-                </div>
-                <a href="${url}" target="_blank" 
-                   class="block w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-center font-bold rounded-xl transition duration-300 shadow-lg shadow-blue-500/25">
-                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
-                    </svg>
-                    Enter Panel
-                </a>
-            `;
-            mainCard.appendChild(div);
-        }
-
-        // ============================================================
-        // TOGGLE TOKEN VISIBILITY
-        // ============================================================
-        function toggleToken() {
-            const input = $('apiToken');
-            const eye = $('eyeIcon');
-            if (input.type === 'password') {
-                input.type = 'text';
-                eye.innerHTML =
-                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>';
-            } else {
-                input.type = 'password';
-                eye.innerHTML =
-                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>';
-            }
-        }
-
-        // ============================================================
-        // MODAL CONTROLS
-        // ============================================================
-        function toggleUpdateModal(show) {
-            const modal = $('update-modal');
-            const card = $('update-modal-card');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-            }
-        }
-
-        // ============================================================
-        // CHECK EXISTING PANELS
-        // ============================================================
-        async function checkExistingPanels() {
-            const token = $('updateApiToken').value.trim();
-            const btn = $('checkPanelsBtn');
-            const listContainer = $('panels-list-container');
-            const statusBox = $('update-status');
-
-            if (!token) {
-                statusBox.classList.remove('hidden');
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerHTML =
-                    '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Please enter your token first.';
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = '<svg class="w-5 h-5 inline animate-spin mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Checking...';
-            statusBox.classList.add('hidden');
-            listContainer.classList.add('hidden');
-            listContainer.innerHTML = '';
-
-            try {
-                const response = await fetch(WORKER_URL + '/api/list-panels', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error('Server error: ' + response.status + ' - ' + errorText);
-                }
-
-                const result = await response.json();
-
-                if (result.success) {
-                    const latestVersion = result.latestVersion || "Unknown";
-
-                    if (result.panels.length === 0) {
-                        statusBox.classList.remove('hidden');
-                        statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400';
-                        statusBox.innerHTML =
-                            '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg> No Ryxo panels found in this account.';
-                    } else {
-                        result.panels.forEach(panel => {
-                            const panelDiv = document.createElement('div');
-                            panelDiv.className = 'flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl';
-                            panelDiv.id = 'panel-item-' + panel.name;
-
-                            panelDiv.innerHTML = `
-                                <div class="flex flex-col">
-                                    <span class="font-bold text-gray-900 dark:text-zinc-100">
-                                        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                                        </svg>
-                                        ${panel.name}
-                                    </span>
-                                    <span id="version-text-${panel.name}" class="text-[11px] text-blue-500 font-medium mt-1 animate-pulse">
-                                        <svg class="w-3 h-3 inline animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                        </svg>
-                                        Checking version...
-                                    </span>
-                                </div>
-                                <div id="btn-container-${panel.name}">
-                                    <div class="w-16 h-6 bg-gray-200 dark:bg-zinc-700 rounded-lg animate-pulse"></div>
-                                </div>
-                            `;
-
-                            listContainer.appendChild(panelDiv);
-                            fetchPanelVersion(token, panel.name, latestVersion);
-                        });
-                        listContainer.classList.remove('hidden');
-                    }
-                } else {
-                    throw new Error(result.error || 'Unknown error');
-                }
-            } catch (error) {
-                statusBox.classList.remove('hidden');
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerHTML =
-                    '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Error: ' +
-                    error.message;
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML =
-                    '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg> Check Existing Panels';
-            }
-        }
-
-        // ============================================================
-        // FETCH PANEL VERSION
-        // ============================================================
-        async function fetchPanelVersion(token, scriptName, latestVersion) {
-            try {
-                const response = await fetch(WORKER_URL + '/api/get-panel-version', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, scriptName })
-                });
-
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-
-                const result = await response.json();
-                const version = result.success ? result.version : "Unknown";
-
-                const isLatest = (version === latestVersion && latestVersion !== "Unknown");
-                const displayVersion = version === "Unknown" ? "Legacy / Unknown" : version;
-
-                const versionText = document.getElementById('version-text-' + scriptName);
-                const btnContainer = document.getElementById('btn-container-' + scriptName);
-
-                if (versionText && btnContainer) {
-                    versionText.className = 'text-[11px] text-gray-500 dark:text-zinc-400 font-medium mt-1';
-                    versionText.innerText = displayVersion;
-
-                    if (isLatest) {
-                        btnContainer.innerHTML =
-                            '<button disabled class="px-3 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-bold rounded-lg text-xs cursor-not-allowed">✅ Up to date</button>';
-                    } else {
-                        btnContainer.innerHTML =
-                            `<button data-name="${scriptName}" onclick="updateRyxoPanel(this.dataset.name)" class="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-400 font-bold rounded-lg text-xs transition">🔄 Update</button>`;
-                    }
-                }
-            } catch (error) {
-                const versionText = document.getElementById('version-text-' + scriptName);
-                if (versionText) {
-                    versionText.className = 'text-[11px] text-red-500 font-medium mt-1';
-                    versionText.innerHTML =
-                        '<svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Error fetching version';
-                }
-            }
-        }
-
-        // ============================================================
-        // UPDATE PANEL
-        // ============================================================
-        async function updateRyxoPanel(scriptName) {
-            const token = $('updateApiToken').value.trim();
-            const statusBox = $('update-status');
-
-            if (!confirm('Are you sure you want to update "' + scriptName + '"?')) return;
-
-            statusBox.classList.remove('hidden');
-            statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400';
-            statusBox.innerHTML =
-                '<svg class="w-5 h-5 inline animate-spin mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Updating ' +
-                scriptName + '...';
-
-            try {
-                const response = await fetch(WORKER_URL + '/api/do-update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, scriptName })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error('HTTP ' + response.status + ' - ' + errorText);
-                }
-
-                const result = await response.json();
-
-                if (result.success) {
-                    statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
-                    statusBox.innerHTML =
-                        '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ✅ Panel ' +
-                        scriptName + ' successfully updated!';
-                    setTimeout(() => checkExistingPanels(), 2000);
-                } else {
-                    throw new Error(result.error || 'Unknown error');
-                }
-            } catch (error) {
-                statusBox.className = 'mt-4 text-center text-sm font-bold p-3 rounded-xl bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
-                statusBox.innerHTML =
-                    '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Error: ' +
-                    error.message;
-            }
-        }
-
-        // ============================================================
-        // DEPLOY
-        // ============================================================
-        async function startDeploy() {
-            const token = $('apiToken').value.trim();
-            const btn = $('deployBtn');
-
-            hideError();
-            clearSuccess();
-
-            if (!token) {
-                showError(
-                    '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Please enter your Cloudflare token first.'
-                );
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML =
-                '<svg class="w-5 h-5 inline animate-spin mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Deploying...';
-            showStatus(
-                '<svg class="w-4 h-4 inline animate-spin mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Validating token...',
-                15
-            );
-            await sleep(500);
-
-            showStatus(
-                '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg> Connecting to Cloudflare...',
-                30
-            );
-            await sleep(500);
-
-            showStatus(
-                '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path></svg> Creating D1 database...',
-                50
-            );
-
-            try {
-                const response = await fetch(WORKER_URL + '/api/deploy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-
-                showStatus(
-                    '<svg class="w-4 h-4 inline animate-spin mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Fetching Ryxo panel...',
-                    75
-                );
-                await sleep(600);
-
-                showStatus(
-                    '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Activating link...',
-                    90
-                );
-                await sleep(500);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error('HTTP ' + response.status + ' - ' + errorText);
-                }
-
-                const result = await response.json();
-
-                if (result.success) {
-                    showStatus(
-                        '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Complete!',
-                        100
-                    );
-                    await sleep(400);
-                    hideStatus();
-                    showSuccess(result.url);
-                } else {
-                    throw new Error(result.error || 'Deployment failed');
-                }
-            } catch (error) {
-                hideStatus();
-                const errorMsg = error.message;
-                const rawError = errorMsg.includes('|') ? errorMsg.split('|')[1] : errorMsg;
-
-                if (errorMsg.includes("DATABASE_ERROR") || errorMsg.includes("databases per account") || errorMsg
-                    .includes("limit reached")) {
-                    showError(
-                        '<div class="font-bold mb-1">🧱 D1 database limit reached.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-2">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/?to=/:account/workers/d1" target="_blank" class="inline-block bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Manage Databases</a>'
-                    );
-                } else if (errorMsg.includes("DEPLOYMENT_ERROR") || errorMsg.includes("script limit") || errorMsg
-                    .includes("scripts per account")) {
-                    showError(
-                        '<div class="font-bold mb-1">🧱 Worker script limit reached.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-2">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/?to=/:account/workers/services" target="_blank" class="inline-block bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Manage Workers</a>'
-                    );
-                } else if (errorMsg.includes("Account not found") || errorMsg.includes("Authentication") || errorMsg
-                    .includes("Invalid") || errorMsg.includes("SUBDOMAIN_ERROR")) {
-                    showError(
-                        '<div class="font-bold mb-1">🔑 Invalid token or insufficient permissions.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-2">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" class="inline-block bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Manage Tokens</a>'
-                    );
-                } else if (errorMsg.includes("email") || errorMsg.includes("verify")) {
-                    showError(
-                        '<div class="font-bold mb-1">📧 Please verify your email on Cloudflare first.</div>' +
-                        '<div class="text-[11px] opacity-70 mb-2">' + rawError + '</div>' +
-                        '<a href="https://dash.cloudflare.com/profile" target="_blank" class="inline-block bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Verify Email</a>'
-                    );
-                } else {
-                    showError(
-                        '<svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> ' +
-                        errorMsg
-                    );
-                }
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML =
-                    '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Deploy Panel';
-            }
-        }
-    </script>
-
-</body>
-
-</html>`;
-}
