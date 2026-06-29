@@ -425,6 +425,12 @@
     </div>
 
     <script>
+        // ============================================================
+        // ⚠️ IMPORTANT: CHANGE THIS TO YOUR WORKER URL ⚠️
+        // ============================================================
+        const WORKER_URL = 'https://ryxo-deployer.sepantagamer724.workers.dev';
+        // ============================================================
+
         function createParticles() {
             const container = document.getElementById('particles-container');
             const count = 20;
@@ -507,13 +513,16 @@
             progressBar.style.width = '50%';
 
             try {
-                const response = await fetch('/api/deploy', {
+                // ============================================================
+                // ✅ استفاده از آدرس کامل Worker به جای relative path
+                // ============================================================
+                const response = await fetch(WORKER_URL + '/api/deploy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token })
                 });
+                // ============================================================
 
-                // Check if response is ok
                 if (!response.ok) {
                     const text = await response.text();
                     throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 100));
@@ -529,13 +538,11 @@
                 progressBar.style.width = '90%';
                 await sleep(500);
 
-                // Clone response before reading
                 const responseClone = response.clone();
                 let result;
                 try {
                     result = await response.json();
                 } catch (e) {
-                    // If JSON parsing fails, get text from clone
                     const text = await responseClone.text();
                     throw new Error('Server returned: ' + text.substring(0, 200));
                 }
@@ -575,12 +582,19 @@
 
                 const errorMsg = e.message;
 
-                // Check if it's a 404 or connection error
-                if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
-                    errorBox.innerHTML = '<div class="mb-2 font-bold">⚠️ Worker endpoint not found! (404)</div>' +
-                        '<div class="text-[11px] opacity-70 mb-3">Make sure you are running this page on the correct Cloudflare Worker URL.</div>' +
+                if (errorMsg.includes('405') || errorMsg.includes('Method Not Allowed')) {
+                    errorBox.innerHTML = '<div class="mb-2 font-bold">⚠️ Method Not Allowed (405)</div>' +
+                        '<div class="text-[11px] opacity-70 mb-3">The Worker is not responding to POST requests.</div>' +
                         '<div class="text-[11px] opacity-50 mb-3" dir="ltr">' + errorMsg + '</div>' +
-                        '<div class="text-[11px] text-blue-400 mt-2">Try: <span class="font-mono">/api/deploy</span> endpoint might be missing</div>';
+                        '<div class="text-[11px] text-blue-400 mt-2">Make sure the Worker has the /api/deploy endpoint.</div>' +
+                        '<div class="text-[11px] text-yellow-400 mt-1">Current Worker URL: <span class="font-mono">' + WORKER_URL + '</span></div>';
+                }
+                else if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
+                    errorBox.innerHTML = '<div class="mb-2 font-bold">⚠️ Worker endpoint not found! (404)</div>' +
+                        '<div class="text-[11px] opacity-70 mb-3">The Worker URL might be incorrect or not deployed.</div>' +
+                        '<div class="text-[11px] opacity-50 mb-3" dir="ltr">' + errorMsg + '</div>' +
+                        '<div class="text-[11px] text-yellow-400 mt-1">Current Worker URL: <span class="font-mono">' + WORKER_URL + '</span></div>' +
+                        '<div class="text-[11px] text-blue-400 mt-1">Make sure you deployed deployer.js to this Worker.</div>';
                 }
                 else if (errorMsg.includes('databases per account') || errorMsg.includes('limit reached')) {
                     errorBox.innerHTML = '<div class="mb-2 font-bold">You have reached the D1 database limit.</div>' +
