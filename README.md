@@ -107,8 +107,7 @@
 2. Share subscription links with your users
 3. Monitor usage in real-time
 
-> [!WARNING]
-> **Never share your admin password!** Store it in a password manager.
+> **⚠️ WARNING:** Never share your admin password! Store it in a password manager.
 
 ## 🎮 Using the Panel
 
@@ -207,6 +206,16 @@ The following variables are automatically configured during deployment:
 
 ---
 
+<br>
+
+---
+
+<div align="center">
+  <h2>🇮🇷 Persian / فارسی</h2>
+</div>
+
+---
+
 <div id="persian" dir="rtl" align="right">
 
 ## 📌 معرفی
@@ -297,8 +306,7 @@ The following variables are automatically configured during deployment:
 ۲. لینک‌های اشتراک را با کاربران خود به اشتراک بگذارید
 ۳. مصرف را به صورت لحظه‌ای مانیتور کنید
 
-> [!WARNING]
-> **هرگز رمز عبور مدیریت خود را با کسی به اشتراک نگذارید!** آن را در یک مدیریت رمز عبور ذخیره کنید.
+> **⚠️ هشدار:** هرگز رمز عبور مدیریت خود را با کسی به اشتراک نگذارید! آن را در یک مدیریت رمز عبور ذخیره کنید.
 
 ## 🎮 استفاده از پنل
 
