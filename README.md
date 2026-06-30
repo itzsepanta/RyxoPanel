@@ -207,18 +207,18 @@ The following variables are automatically configured during deployment:
 
 ---
 
-<div style="border-top: 2px solid #ccc; margin: 40px 0;"></div>
+<div style="border-top: 2px solid #333; margin: 40px 0; display: none;"></div>
 
-# <span id="persian">🇮🇷 فارسی</span>
+# <span id="persian" style="display: none;">🇮🇷 فارسی</span>
 
-<a href="#english" style="float: right;">📖 مطالعه به انگلیسی</a>
+<a href="#english" style="float: right; display: none;">📖 Read in English</a>
 
-<div dir="rtl" align="right">
+<div dir="rtl" align="right" style="display: none;">
 
 ## 📌 معرفی
-**پنل رایکسو** یک پلتفرم کامل و بدون سرور برای مدیریت VPN است که کاملاً روی زیرساخت رایگان Cloudflare اجرا می‌شود. این پنل یک رابط حرفه‌ای برای ایجاد، مدیریت و توزیع اشتراک‌های VLESS با تنظیمات پیشرفته ارائه می‌دهد.
+**پنل ریکسو** یک پلتفرم کامل و بدون سرور برای مدیریت VPN است که کاملاً روی زیرساخت رایگان Cloudflare اجرا می‌شود. این پنل یک رابط حرفه‌ای برای ایجاد، مدیریت و توزیع اشتراک‌های VLESS با تنظیمات پیشرفته ارائه می‌دهد.
 
-### 🎯 چرا پنل رایکسو؟
+### 🎯 چرا پنل ریکسو؟
 - ✅ **هزینه سرور صفر** - ۱۰۰٪ روی Cloudflare Workers (سطح رایگان) اجرا می‌شود
 - ✅ **بدون نیاز به نگهداری** - بروزرسانی خودکار و بدون وقفه
 - ✅ **کاربرپسند** - رابط زیبا با تم‌های تاریک/روشن
