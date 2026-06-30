@@ -4,12 +4,13 @@
 
 <br>
 
-<a href="#english">
-  <img src="https://img.shields.io/badge/English-0077B5?style=for-the-badge&logo=googletranslate&logoColor=white" alt="English">
-</a>
-<a href="#persian">
-  <img src="https://img.shields.io/badge/Persian-28A745?style=for-the-badge&logo=googletranslate&logoColor=white" alt="Persian">
-</a>
+<button onclick="showEnglish()" id="btnEn" style="padding: 8px 20px; background: #0077B5; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin: 5px;">
+  🇬🇧 English
+</button>
+
+<button onclick="showPersian()" id="btnFa" style="padding: 8px 20px; background: #28A745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin: 5px;">
+  🇮🇷 Persian
+</button>
 
 <br><br>
 
@@ -17,9 +18,7 @@
 
 </div>
 
-# <span id="english">🇬🇧 English</span>
-
-<a href="#persian" style="float: right;">📖 Read in Persian</a>
+<div id="englishSection">
 
 ## 📌 Overview
 **Ryxo Panel** is a complete, serverless VPN management platform that runs entirely on Cloudflare's free infrastructure. It provides a professional interface for creating, managing, and distributing VLESS subscriptions with advanced configuration options.
@@ -205,15 +204,9 @@ The following variables are automatically configured during deployment:
 - ✅ **Community Support:** Active
 - ✅ **Documentation:** Complete
 
----
+</div>
 
-<div style="border-top: 2px solid #333; margin: 40px 0; display: none;"></div>
-
-# <span id="persian" style="display: none;">🇮🇷 فارسی</span>
-
-<a href="#english" style="float: right; display: none;">📖 Read in English</a>
-
-<div dir="rtl" align="right" style="display: none;">
+<div id="persianSection" style="display: none;" dir="rtl" align="right">
 
 ## 📌 معرفی
 **پنل ریکسو** یک پلتفرم کامل و بدون سرور برای مدیریت VPN است که کاملاً روی زیرساخت رایگان Cloudflare اجرا می‌شود. این پنل یک رابط حرفه‌ای برای ایجاد، مدیریت و توزیع اشتراک‌های VLESS با تنظیمات پیشرفته ارائه می‌دهد.
@@ -400,3 +393,23 @@ The following variables are automatically configured during deployment:
 - ✅ **مستندات:** کامل
 
 </div>
+
+<script>
+function showEnglish() {
+  document.getElementById('englishSection').style.display = 'block';
+  document.getElementById('persianSection').style.display = 'none';
+  document.getElementById('btnEn').style.background = '#0077B5';
+  document.getElementById('btnFa').style.background = '#28A745';
+}
+
+function showPersian() {
+  document.getElementById('englishSection').style.display = 'none';
+  document.getElementById('persianSection').style.display = 'block';
+  document.getElementById('btnEn').style.background = '#555';
+  document.getElementById('btnFa').style.background = '#1a7a32';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  showEnglish();
+});
+</script>
