@@ -1,15 +1,25 @@
-<div dir="ltr" align="center">
+<div align="center">
 
 # 🌐 Ryxo Panel
 
-[![English](https://img.shields.io/badge/English-0077B5?style=for-the-badge&logo=googletranslate&logoColor=white)](README.md)
-[![Persian](https://img.shields.io/badge/فارسی-0077B5?style=for-the-badge&logo=googletranslate&logoColor=white)](README.fa.md)
+<br>
 
-</div>
+<a href="#english">
+  <img src="https://img.shields.io/badge/English-0077B5?style=for-the-badge&logo=googletranslate&logoColor=white" alt="English">
+</a>
+<a href="#persian">
+  <img src="https://img.shields.io/badge/Persian-28A745?style=for-the-badge&logo=googletranslate&logoColor=white" alt="Persian">
+</a>
+
+<br><br>
 
 ---
 
-# 🇬🇧 English
+</div>
+
+# <span id="english">🇬🇧 English</span>
+
+<a href="#persian" style="float: right;">📖 Read in Persian</a>
 
 ## 📌 Overview
 **Ryxo Panel** is a complete, serverless VPN management platform that runs entirely on Cloudflare's free infrastructure. It provides a professional interface for creating, managing, and distributing VLESS subscriptions with advanced configuration options.
@@ -197,15 +207,13 @@ The following variables are automatically configured during deployment:
 
 ---
 
-# 🇮🇷 فارسی
+<div style="border-top: 2px solid #ccc; margin: 40px 0;"></div>
 
-<div align="center">
-  
-  <img src="https://img.shields.io/badge/نسخه-26.2.1-blue?style=for-the-badge">
-  <img src="https://img.shields.io/badge/وضعیت-فعال-success?style=for-the-badge">
-  <img src="https://img.shields.io/badge/مجوز-MIT-green?style=for-the-badge">
+# <span id="persian">🇮🇷 فارسی</span>
 
-</div>
+<a href="#english" style="float: right;">📖 مطالعه به انگلیسی</a>
+
+<div dir="rtl" align="right">
 
 ## 📌 معرفی
 **پنل رایکسو** یک پلتفرم کامل و بدون سرور برای مدیریت VPN است که کاملاً روی زیرساخت رایگان Cloudflare اجرا می‌شود. این پنل یک رابط حرفه‌ای برای ایجاد، مدیریت و توزیع اشتراک‌های VLESS با تنظیمات پیشرفته ارائه می‌دهد.
@@ -390,3 +398,5 @@ The following variables are automatically configured during deployment:
 - ✅ **بروزرسانی امنیتی:** منظم
 - ✅ **پشتیبانی جامعه:** فعال
 - ✅ **مستندات:** کامل
+
+</div>
